@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,7 +9,6 @@ import (
 	"net/url"
 	"slices"
 	"sync/atomic"
-	"encoding/json"
 )
 
 type Server struct {
@@ -62,12 +62,12 @@ func (sp *ServerPool) AddServerHandler() http.HandlerFunc {
 			return
 		}
 		var req registerServerRequest
-		if r.Header.Get("Content-Type") == "application/json" {  // JSON encoding
+		if r.Header.Get("Content-Type") == "application/json" {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, "Invalid JSON", http.StatusBadRequest)
 				return
 			}
-		} else {  // Form encoding
+		} else {
 			req.Addr = r.FormValue("addr")
 		}
 		if req.Addr == "" {
