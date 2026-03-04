@@ -149,7 +149,7 @@ func main() {
 	serverpool := &ServerPool{Servers: make(map[string]*Server)}
 	serverpool.AddServer("http://localhost:8081")
 	serverpool.AddServer("http://localhost:8082")
-	// serverpool.AddServer("http://localhost:8083")
+	serverpool.AddServer("http://localhost:8083")
 
 	lb := &LoadBalancer{
 		ServerPool:   serverpool,
