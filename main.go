@@ -2,14 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"log"
-	"time"
+	"slices"
+	"sync/atomic"
 )
-
-// TODO: 1) Have your loadbalancer only serve a single server. Accept connections and forward to the server. Get that working first.
 
 type Server struct {
 	Address string
@@ -17,50 +16,38 @@ type Server struct {
 
 type ServerPool struct {
 	Servers map[string]*Server
+	Order   []*Server
 }
 
 func (sp *ServerPool) AddServer(addr string) {
 	if sp.Servers[addr] != nil {
 		return
 	}
-	sp.Servers[addr] = &Server{Address: addr}
+	s := &Server{Address: addr}
+	sp.Servers[addr] = s
+	sp.Order = append(sp.Order, s)
 }
 
 func (sp *ServerPool) RemoveServer(addr string) {
+	if sp.Servers == nil {
+		return
+	}
 	if sp.Servers[addr] == nil {
 		return
 	}
 	delete(sp.Servers, addr)
+	for i, s := range(sp.Order) {
+		if s.Address == addr {
+			sp.Order = slices.Concat(sp.Order[:i], sp.Order[i+1:])
+			break
+		}
+	}
 }
 
 func (sp *ServerPool) GetServers() []*Server {
-	servers := make([]*Server, 0, len(sp.Servers))
-	for _, server := range sp.Servers {
-		servers = append(servers, server)
-	}
-	return servers
-}
-
-func (sp *ServerPool) roundRobin() *Server {
-	if len(sp.Servers) == 0 {
-		return nil
-	}
-	return sp.GetServers()[0]
-}
-
-func (sp *ServerPool) CreateReverseProxy(w http.ResponseWriter, r *http.Request) {
-	if len(sp.Servers) == 0 {
-		http.Error(w, "No servers available", http.StatusServiceUnavailable)
-		return
-	}
-
-	targetUrl := sp.roundRobin().Address
-	url, err := url.Parse(targetUrl)
-	if err != nil {
-		log.Fatal(err)
-	}
-	proxy := httputil.NewSingleHostReverseProxy(url)
-	proxy.ServeHTTP(w, r)
+	out := make([]*Server, len(sp.Order))
+	copy(out, sp.Order)
+	return out
 }
 
 func (sp *ServerPool) AddServerHandler() http.HandlerFunc {
@@ -108,22 +95,52 @@ func (sp *ServerPool) GetServersHandler() http.HandlerFunc {
 	}
 }
 
-func (sp *ServerPool) CreateReverseProxyHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		sp.CreateReverseProxy(w, r)
+type LoadBalancer struct {
+	ServerPool   *ServerPool
+	RequestCount uint64
+}
+
+func (lb *LoadBalancer) roundRobin() *Server {
+	servers := lb.ServerPool.GetServers()
+	if len(servers) == 0 {
+		return nil
 	}
+	idx := atomic.AddUint64(&lb.RequestCount, 1) - 1
+	return servers[idx % uint64(len(servers))]
+}
+
+func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if len(lb.ServerPool.Order) == 0 {
+		http.Error(w, "No servers available", http.StatusServiceUnavailable)
+		return
+	}
+
+	targetUrl := lb.roundRobin().Address
+	url, err := url.Parse(targetUrl)
+	if err != nil {
+		log.Fatal(err)
+	}
+	proxy := httputil.NewSingleHostReverseProxy(url)
+	proxy.ServeHTTP(w, r)
 }
 
 func main() {
-	serverpool := &ServerPool{}
+	serverpool := &ServerPool{Servers: make(map[string]*Server)}
 	serverpool.AddServer("http://localhost:8081")
+	serverpool.AddServer("http://localhost:8082")
+	serverpool.AddServer("http://localhost:8083")
 
-	http.HandleFunc("/", serverpool.CreateReverseProxyHandler())
-	http.HandleFunc("/add", serverpool.AddServerHandler())
-	http.HandleFunc("/remove", serverpool.RemoveServerHandler())
-	http.HandleFunc("/servers", serverpool.GetServersHandler())
+	lb := &LoadBalancer{
+		ServerPool:   serverpool,
+		RequestCount: 0,
+	}
 
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	http.HandleFunc("/", lb.ServeHTTP)
+	http.HandleFunc("/add", lb.ServerPool.AddServerHandler())
+	http.HandleFunc("/remove", lb.ServerPool.RemoveServerHandler())
+	http.HandleFunc("/servers", lb.ServerPool.GetServersHandler())
+
+	if err := http.ListenAndServe("localhost:8080", nil); err != nil {
 		fmt.Println("Error starting load balancer server:", err)
 	}
 }
