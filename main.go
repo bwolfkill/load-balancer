@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"slices"
 	"sync/atomic"
+	"encoding/json"
 )
 
 type Server struct {
@@ -17,6 +18,10 @@ type Server struct {
 type ServerPool struct {
 	Servers map[string]*Server
 	Order   []*Server
+}
+
+type registerServerRequest struct {
+	Addr string `json:"addr"`
 }
 
 func (sp *ServerPool) AddServer(addr string) {
@@ -36,7 +41,7 @@ func (sp *ServerPool) RemoveServer(addr string) {
 		return
 	}
 	delete(sp.Servers, addr)
-	for i, s := range(sp.Order) {
+	for i, s := range sp.Order {
 		if s.Address == addr {
 			sp.Order = slices.Concat(sp.Order[:i], sp.Order[i+1:])
 			break
@@ -56,13 +61,21 @@ func (sp *ServerPool) AddServerHandler() http.HandlerFunc {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		addr := r.FormValue("addr")
-		if addr == "" {
+		var req registerServerRequest
+		if r.Header.Get("Content-Type") == "application/json" {  // JSON encoding
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid JSON", http.StatusBadRequest)
+				return
+			}
+		} else {  // Form encoding
+			req.Addr = r.FormValue("addr")
+		}
+		if req.Addr == "" {
 			http.Error(w, "Address is required", http.StatusBadRequest)
 			return
 		}
-		sp.AddServer(addr)
-		fmt.Fprintf(w, "Server added: %s", addr)
+		sp.AddServer(req.Addr)
+		fmt.Fprintf(w, "Server added: %s", req.Addr)
 	}
 }
 
@@ -72,13 +85,21 @@ func (sp *ServerPool) RemoveServerHandler() http.HandlerFunc {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		addr := r.FormValue("addr")
-		if addr == "" {
+		var req registerServerRequest
+		if r.Header.Get("Content-Type") == "application/json" {
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "Invalid JSON", http.StatusBadRequest)
+				return
+			}
+		} else {
+			req.Addr = r.FormValue("addr")
+		}
+		if req.Addr == "" {
 			http.Error(w, "Address is required", http.StatusBadRequest)
 			return
 		}
-		sp.RemoveServer(addr)
-		fmt.Fprintf(w, "Server removed: %s", addr)
+		sp.RemoveServer(req.Addr)
+		fmt.Fprintf(w, "Server removed: %s", req.Addr)
 	}
 }
 
@@ -106,7 +127,7 @@ func (lb *LoadBalancer) roundRobin() *Server {
 		return nil
 	}
 	idx := atomic.AddUint64(&lb.RequestCount, 1) - 1
-	return servers[idx % uint64(len(servers))]
+	return servers[idx%uint64(len(servers))]
 }
 
 func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +149,7 @@ func main() {
 	serverpool := &ServerPool{Servers: make(map[string]*Server)}
 	serverpool.AddServer("http://localhost:8081")
 	serverpool.AddServer("http://localhost:8082")
-	serverpool.AddServer("http://localhost:8083")
+	// serverpool.AddServer("http://localhost:8083")
 
 	lb := &LoadBalancer{
 		ServerPool:   serverpool,
