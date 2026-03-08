@@ -116,6 +116,30 @@ func (sp *ServerPool) GetServersHandler() http.HandlerFunc {
 	}
 }
 
+func healthCheck(s *Server) bool {
+	_, err := http.Get(s.Address + "/healthz")
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+func (sp *ServerPool) GetHealthCheckHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		server := sp.Servers[r.URL.Query().Get("addr")]
+		if server == nil {
+			http.Error(w, "Server not found", http.StatusBadRequest)
+			return
+		}
+		healthy := healthCheck(server)
+		fmt.Fprintf(w, "Server %s is healthy: %t", server.Address, healthy)
+	}
+}
+
 type LoadBalancer struct {
 	ServerPool   *ServerPool
 	RequestCount uint64
@@ -160,6 +184,7 @@ func main() {
 	http.HandleFunc("/add", lb.ServerPool.AddServerHandler())
 	http.HandleFunc("/remove", lb.ServerPool.RemoveServerHandler())
 	http.HandleFunc("/servers", lb.ServerPool.GetServersHandler())
+	http.HandleFunc("/health", lb.ServerPool.GetHealthCheckHandler())
 
 	if err := http.ListenAndServe("localhost:8080", nil); err != nil {
 		fmt.Println("Error starting load balancer server:", err)
