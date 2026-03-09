@@ -9,11 +9,13 @@ import (
 	"net/url"
 	"slices"
 	"sync/atomic"
+	"time"
 )
 
 type Server struct {
 	Address     string
 	Connections int64
+	Healthy     bool
 }
 
 type ServerPool struct {
@@ -30,6 +32,7 @@ func (sp *ServerPool) AddServer(addr string) {
 		return
 	}
 	s := &Server{Address: addr, Connections: 0}
+	s.Healthy = healthCheck(s)
 	sp.Servers[addr] = s
 	sp.Order = append(sp.Order, s)
 }
@@ -118,27 +121,45 @@ func (sp *ServerPool) GetServersHandler() http.HandlerFunc {
 }
 
 func healthCheck(s *Server) bool {
-	_, err := http.Get(s.Address + "/healthz")
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+	resp, err := client.Get(s.Address + "/healthz")
 	if err != nil {
+		s.Healthy = false
 		return false
 	}
+	resp.Body.Close()
+	s.Healthy = true
 	return true
 }
 
-func (sp *ServerPool) GetHealthCheckHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
+func (lb *LoadBalancer) runHealthCheck() {
+	for {
+		time.Sleep(lb.Interval)
+		for _, server := range lb.ServerPool.GetServers() {
+			healthy := healthCheck(server)
+			if !healthy {
+				fmt.Printf("Server %s is unhealthy\n", server.Address)
+			} else {
+				fmt.Printf("Server %s is healthy\n", server.Address)
+			}
 		}
-		server := sp.Servers[r.URL.Query().Get("addr")]
-		if server == nil {
-			http.Error(w, "Server not found", http.StatusBadRequest)
-			return
-		}
-		healthy := healthCheck(server)
-		fmt.Fprintf(w, "Server %s is healthy: %t", server.Address, healthy)
 	}
+}
+
+func (sp *ServerPool) GetHealthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	server := sp.Servers[r.URL.Query().Get("addr")]
+	if server == nil {
+		http.Error(w, "Server not found", http.StatusBadRequest)
+		return
+	}
+	healthy := healthCheck(server)
+	fmt.Fprintf(w, "Server %s is: %t", server.Address, healthy)
 }
 
 type Algorithm interface {
@@ -155,8 +176,15 @@ func (r *RoundRobin) Select(servers []*Server) *Server {
 	if len(servers) == 0 {
 		return nil
 	}
-	idx := atomic.AddUint64(&r.counter, 1) - 1
-	return servers[idx%uint64(len(servers))]
+	start := atomic.LoadUint64(&r.counter)
+	for i := uint64(0); i < uint64(len(servers)); i++ {
+		server := servers[(start+i)%uint64(len(servers))]
+		if server.Healthy {
+			atomic.AddUint64(&r.counter, i+1)
+			return server
+		}
+	}
+	return nil
 }
 
 func (l *LeastConnections) Select(servers []*Server) *Server {
@@ -166,7 +194,7 @@ func (l *LeastConnections) Select(servers []*Server) *Server {
 	var server *Server
 	minConnections := int64(1<<63 - 1)
 	for _, s := range servers {
-		if s.Connections < minConnections {
+		if s.Connections < minConnections && s.Healthy {
 			minConnections = s.Connections
 			server = s
 		}
@@ -177,6 +205,7 @@ func (l *LeastConnections) Select(servers []*Server) *Server {
 type LoadBalancer struct {
 	ServerPool *ServerPool
 	Algorithm  Algorithm
+	Interval   time.Duration
 }
 
 func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -211,15 +240,19 @@ func main() {
 	lb := &LoadBalancer{
 		ServerPool: serverpool,
 		Algorithm:  &RoundRobin{},
+		Interval:   5 * time.Second,
 	}
 
 	http.HandleFunc("/", lb.ServeHTTP)
 	http.HandleFunc("/add", lb.ServerPool.AddServerHandler())
 	http.HandleFunc("/remove", lb.ServerPool.RemoveServerHandler())
 	http.HandleFunc("/servers", lb.ServerPool.GetServersHandler())
-	http.HandleFunc("/health", lb.ServerPool.GetHealthCheckHandler())
+	http.HandleFunc("/health", lb.ServerPool.GetHealthCheckHandler)
 
+	go lb.runHealthCheck()
+
+	fmt.Println("Starting Load Balancer on port 8080")
 	if err := http.ListenAndServe("localhost:8080", nil); err != nil {
-		fmt.Println("Error starting load balancer server:", err)
+		log.Fatal("Error starting load balancer server:", err)
 	}
 }
