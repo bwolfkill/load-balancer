@@ -12,7 +12,8 @@ import (
 )
 
 type Server struct {
-	Address string
+	Address     string
+	Connections int64
 }
 
 type ServerPool struct {
@@ -28,7 +29,7 @@ func (sp *ServerPool) AddServer(addr string) {
 	if sp.Servers[addr] != nil {
 		return
 	}
-	s := &Server{Address: addr}
+	s := &Server{Address: addr, Connections: 0}
 	sp.Servers[addr] = s
 	sp.Order = append(sp.Order, s)
 }
@@ -140,18 +141,42 @@ func (sp *ServerPool) GetHealthCheckHandler() http.HandlerFunc {
 	}
 }
 
-type LoadBalancer struct {
-	ServerPool   *ServerPool
-	RequestCount uint64
+type Algorithm interface {
+	Select([]*Server) *Server
 }
 
-func (lb *LoadBalancer) roundRobin() *Server {
-	servers := lb.ServerPool.GetServers()
+type RoundRobin struct {
+	counter uint64
+}
+
+type LeastConnections struct{}
+
+func (r *RoundRobin) Select(servers []*Server) *Server {
 	if len(servers) == 0 {
 		return nil
 	}
-	idx := atomic.AddUint64(&lb.RequestCount, 1) - 1
+	idx := atomic.AddUint64(&r.counter, 1) - 1
 	return servers[idx%uint64(len(servers))]
+}
+
+func (l *LeastConnections) Select(servers []*Server) *Server {
+	if len(servers) == 0 {
+		return nil
+	}
+	var server *Server
+	minConnections := int64(1<<63 - 1)
+	for _, s := range servers {
+		if s.Connections < minConnections {
+			minConnections = s.Connections
+			server = s
+		}
+	}
+	return server
+}
+
+type LoadBalancer struct {
+	ServerPool *ServerPool
+	Algorithm  Algorithm
 }
 
 func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -160,11 +185,19 @@ func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetUrl := lb.roundRobin().Address
+	server := lb.Algorithm.Select(lb.ServerPool.Order)
+	if server == nil {
+		http.Error(w, "No servers available", http.StatusServiceUnavailable)
+		return
+	}
+	targetUrl := server.Address
 	url, err := url.Parse(targetUrl)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	atomic.AddInt64(&server.Connections, 1)
+	defer atomic.AddInt64(&server.Connections, -1)
 	proxy := httputil.NewSingleHostReverseProxy(url)
 	proxy.ServeHTTP(w, r)
 }
@@ -176,8 +209,8 @@ func main() {
 	serverpool.AddServer("http://localhost:8083")
 
 	lb := &LoadBalancer{
-		ServerPool:   serverpool,
-		RequestCount: 0,
+		ServerPool: serverpool,
+		Algorithm:  &RoundRobin{},
 	}
 
 	http.HandleFunc("/", lb.ServeHTTP)
