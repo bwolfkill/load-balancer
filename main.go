@@ -40,16 +40,16 @@ func (sp *ServerPool) AddServer(addr string) {
 	health := healthCheck(s)
 	s.Healthy = health
 	if !health {
-		fmt.Printf("Server %s is unhealthy\n", s.Address)
+		log.Printf("Server %s is unhealthy\n", s.Address)
 	} else {
-		fmt.Printf("Server %s is healthy\n", s.Address)
-		targetUrl := s.Address
-		url, err := url.Parse(targetUrl)
-		if err != nil {
-			log.Fatal(err)
-		}
-		s.reverseProxy = httputil.NewSingleHostReverseProxy(url)
+		log.Printf("Server %s is healthy\n", s.Address)
 	}
+	targetUrl := s.Address
+	url, err := url.Parse(targetUrl)
+	if err != nil {
+		log.Fatal(err)
+	}
+	s.reverseProxy = httputil.NewSingleHostReverseProxy(url)
 }
 
 func (sp *ServerPool) RemoveServer(addr string) {
@@ -164,11 +164,11 @@ func (lb *LoadBalancer) runHealthCheck() {
 		time.Sleep(lb.Interval)
 		for _, server := range lb.ServerPool.GetServers() {
 			healthy := healthCheck(server)
+			status := "up"
 			if !healthy {
-				fmt.Printf("Server %s is unhealthy\n", server.Address)
-			} else {
-				fmt.Printf("Server %s is healthy\n", server.Address)
+				status = "down"
 			}
+			log.Printf("%s [%s]", server.Address, status)
 		}
 	}
 }
@@ -225,7 +225,7 @@ func (l *LeastConnections) Select(servers []*Server) *Server {
 			server = s
 		}
 	}
-	if minConnections == int64(1<<63 - 1) {
+	if minConnections == int64(1<<63-1) {
 		return nil
 	}
 	return server
@@ -274,7 +274,7 @@ func main() {
 
 	go lb.runHealthCheck()
 
-	fmt.Println("Starting Load Balancer on port 8080")
+	log.Println("Starting Load Balancer on port 8080")
 	if err := http.ListenAndServe("localhost:8080", nil); err != nil {
 		log.Fatal("Error starting load balancer server:", err)
 	}

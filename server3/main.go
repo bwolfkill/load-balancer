@@ -23,7 +23,7 @@ func main() {
 	})
 	http.HandleFunc("/healthz", getHealthCheckHandler())
 
-	fmt.Printf("Starting Server 3 at port 8083\n")
+	log.Printf("Starting Server 3 at port 8083\n")
 	if err := http.ListenAndServe("localhost:8083", nil); err != nil {
 		log.Fatal(err)
 	}
