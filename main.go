@@ -14,10 +14,11 @@ import (
 )
 
 type Server struct {
-	Address     string
-	Connections int64
-	Healthy     bool
-	mux         sync.RWMutex
+	Address      string
+	Connections  int64
+	Healthy      bool
+	mux          sync.RWMutex
+	reverseProxy *httputil.ReverseProxy
 }
 
 type ServerPool struct {
@@ -34,9 +35,21 @@ func (sp *ServerPool) AddServer(addr string) {
 		return
 	}
 	s := &Server{Address: addr, Connections: 0}
-	s.Healthy = healthCheck(s)
 	sp.Servers[addr] = s
 	sp.Order = append(sp.Order, s)
+	health := healthCheck(s)
+	s.Healthy = health
+	if !health {
+		fmt.Printf("Server %s is unhealthy\n", s.Address)
+	} else {
+		fmt.Printf("Server %s is healthy\n", s.Address)
+		targetUrl := s.Address
+		url, err := url.Parse(targetUrl)
+		if err != nil {
+			log.Fatal(err)
+		}
+		s.reverseProxy = httputil.NewSingleHostReverseProxy(url)
+	}
 }
 
 func (sp *ServerPool) RemoveServer(addr string) {
@@ -212,6 +225,9 @@ func (l *LeastConnections) Select(servers []*Server) *Server {
 			server = s
 		}
 	}
+	if minConnections == int64(1<<63 - 1) {
+		return nil
+	}
 	return server
 }
 
@@ -232,16 +248,10 @@ func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No servers available", http.StatusServiceUnavailable)
 		return
 	}
-	targetUrl := server.Address
-	url, err := url.Parse(targetUrl)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	atomic.AddInt64(&server.Connections, 1)
 	defer atomic.AddInt64(&server.Connections, -1)
-	proxy := httputil.NewSingleHostReverseProxy(url)
-	proxy.ServeHTTP(w, r)
+	server.reverseProxy.ServeHTTP(w, r)
 }
 
 func main() {
