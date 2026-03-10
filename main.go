@@ -8,6 +8,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -16,6 +17,7 @@ type Server struct {
 	Address     string
 	Connections int64
 	Healthy     bool
+	mux         sync.RWMutex
 }
 
 type ServerPool struct {
@@ -120,18 +122,28 @@ func (sp *ServerPool) GetServersHandler() http.HandlerFunc {
 	}
 }
 
-func healthCheck(s *Server) bool {
+func setAlive(s *Server, alive bool) {
+	s.mux.Lock()
+	s.Healthy = alive
+	s.mux.Unlock()
+}
+
+func isAlive(s *Server) bool {
 	client := http.Client{
 		Timeout: 5 * time.Second,
 	}
 	resp, err := client.Get(s.Address + "/healthz")
 	if err != nil {
-		s.Healthy = false
 		return false
 	}
 	resp.Body.Close()
-	s.Healthy = true
 	return true
+}
+
+func healthCheck(s *Server) bool {
+	alive := isAlive(s)
+	setAlive(s, alive)
+	return alive
 }
 
 func (lb *LoadBalancer) runHealthCheck() {
@@ -167,7 +179,7 @@ type Algorithm interface {
 }
 
 type RoundRobin struct {
-	counter uint64
+	current uint64
 }
 
 type LeastConnections struct{}
@@ -176,11 +188,12 @@ func (r *RoundRobin) Select(servers []*Server) *Server {
 	if len(servers) == 0 {
 		return nil
 	}
-	start := atomic.LoadUint64(&r.counter)
+	start := atomic.LoadUint64(&r.current) + 1
 	for i := uint64(0); i < uint64(len(servers)); i++ {
-		server := servers[(start+i)%uint64(len(servers))]
+		index := (start + i) % uint64(len(servers))
+		server := servers[index]
 		if server.Healthy {
-			atomic.AddUint64(&r.counter, i+1)
+			atomic.StoreUint64(&r.current, index)
 			return server
 		}
 	}
