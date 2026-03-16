@@ -301,6 +301,14 @@ func GetRetryFromContext(r *http.Request) int {
 	return 0
 }
 
+func AddConnection(s *Server) {
+	atomic.AddInt64(&s.Connections, 1)
+}
+
+func RemoveConnection(s *Server) {
+	atomic.AddInt64(&s.Connections, -1)
+}
+
 type LoadBalancer struct {
 	ServerPool *ServerPool
 	Algorithm  Algorithm
@@ -327,8 +335,8 @@ func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	atomic.AddInt64(&server.Connections, 1)
-	defer atomic.AddInt64(&server.Connections, -1)
+	AddConnection(server)
+	defer RemoveConnection(server)
 	server.reverseProxy.ServeHTTP(w, r)
 }
 
