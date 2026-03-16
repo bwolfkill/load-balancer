@@ -61,14 +61,19 @@ func (lb *LoadBalancer) AddServer(addr string) {
 	health := HealthCheck(s)
 	s.Healthy = health
 	if !health {
-		log.Printf("Server %s is unhealthy\n", s.Address)
+		slog.Info("Server is unhealthy", "address", s.Address)
 	} else {
-		log.Printf("Server %s is healthy\n", s.Address)
+		slog.Info("Server is healthy", "address", s.Address)
 	}
 	targetUrl := s.Address
+	addReverseProxy(s, targetUrl, lb)
+}
+
+func addReverseProxy(s *Server, targetUrl string, lb *LoadBalancer) {
 	url, err := url.Parse(targetUrl)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("Error parsing server URL", "error", err, "address", s.Address)
+		return
 	}
 	s.reverseProxy = httputil.NewSingleHostReverseProxy(url)
 	s.reverseProxy.ErrorHandler = ReverseProxyErrorHandler(lb)
@@ -76,7 +81,7 @@ func (lb *LoadBalancer) AddServer(addr string) {
 
 func ReverseProxyErrorHandler(lb *LoadBalancer) func(http.ResponseWriter, *http.Request, error) {
 	return func(w http.ResponseWriter, r *http.Request, e error) {
-		log.Printf("[%s] %s\n", r.RemoteAddr, e.Error())
+		slog.Info("Reverse proxy error", "error", e, "remoteAddr", r.RemoteAddr, "path", r.URL.Path)
 		retries := GetRetryFromContext(r)
 		server := lb.ServerPool.Servers[r.URL.Host]
 		if server == nil {
@@ -93,7 +98,7 @@ func ReverseProxyErrorHandler(lb *LoadBalancer) func(http.ResponseWriter, *http.
 		setAlive(server, false)
 
 		attempts := GetAttemptFromContext(r)
-		log.Printf("%s(%s) attempting retry %d\n", r.RemoteAddr, r.URL.Path, attempts)
+		slog.Info("Attempting retry", "remoteAddr", r.RemoteAddr, "path", r.URL.Path, "attempts", attempts)
 		ctx := context.WithValue(r.Context(), Attempt, attempts+1)
 		lb.LoadBalance(w, r.WithContext(ctx))
 	}
@@ -219,7 +224,7 @@ func (lb *LoadBalancer) RunHealthCheck() {
 			if !healthy {
 				status = "down"
 			}
-			log.Printf("%s [%s]", server.Address, status)
+			slog.Info("Health check", "server", server.Address, "status", status)
 		}
 	}
 }
@@ -321,20 +326,20 @@ type LoadBalancer struct {
 
 func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
 	if len(lb.ServerPool.Order) == 0 {
-		log.Printf("%s(%s) no servers available", r.RemoteAddr, r.URL.Path)
+		slog.Error("No servers available", "remoteAddr", r.RemoteAddr, "path", r.URL.Path)
 		http.Error(w, "Service not available", http.StatusServiceUnavailable)
 		return
 	}
 
 	attempts := GetAttemptFromContext(r)
 	if attempts > 3 {
-		log.Printf("%s(%s) too many attempts, terminating", r.RemoteAddr, r.URL.Path)
+		slog.Error("Too many attempts", "remoteAddr", r.RemoteAddr, "path", r.URL.Path)
 		http.Error(w, "Service not available", http.StatusServiceUnavailable)
 		return
 	}
 	server := lb.Algorithm.Select(lb.ServerPool.Order)
 	if server == nil {
-		log.Printf("%s(%s) no healthy servers available", r.RemoteAddr, r.URL.Path)
+		slog.Error("No healthy servers available", "remoteAddr", r.RemoteAddr, "path", r.URL.Path)
 		http.Error(w, "Service not available", http.StatusServiceUnavailable)
 		return
 	}
