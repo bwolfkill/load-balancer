@@ -8,9 +8,13 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"os/signal"
 	"slices"
 	"sync"
 	"sync/atomic"
+	"syscall"
+	"log/slog"
 	"time"
 )
 
@@ -340,6 +344,18 @@ func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
 	server.reverseProxy.ServeHTTP(w, r)
 }
 
+func Shutdown(server *http.Server, channel chan os.Signal) {
+	sig := <- channel
+	slog.Info("Shutdown signal received", "signal", sig)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		slog.Error("Shutdown error", "error", err)
+	}
+}
+
 func main() {
 	lb := &LoadBalancer{
 		ServerPool: newServerPool(),
@@ -356,10 +372,20 @@ func main() {
 	http.HandleFunc("/servers", lb.GetServersHandler())
 	http.HandleFunc("/health", lb.GetHealthCheckHandler)
 
+	server := &http.Server{
+		Addr: ":8080",
+		Handler: http.HandlerFunc(lb.LoadBalance),
+	}
+
 	go lb.RunHealthCheck()
 
-	log.Println("Starting Load Balancer on port 8080")
-	if err := http.ListenAndServe("localhost:8080", nil); err != nil {
-		log.Fatal("Error starting load balancer server:", err)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go Shutdown(server, sigChan)
+
+	slog.Info("Starting load balancer", "port", "8080")
+	if err := server.ListenAndServe(); err != nil {
+		slog.Error("Error starting load balancer server", "error", err)
 	}
 }
