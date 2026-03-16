@@ -30,6 +30,7 @@ type Server struct {
 type ServerPool struct {
 	Servers map[string]*Server
 	Order   []*Server
+	mux     sync.RWMutex
 }
 
 type registerServerRequest struct {
@@ -44,6 +45,8 @@ func newServerPool() *ServerPool {
 }
 
 func (lb *LoadBalancer) AddServer(addr string) {
+	lb.ServerPool.mux.Lock()
+	defer lb.ServerPool.mux.Unlock()
 	if lb.ServerPool.Servers[addr] != nil {
 		return
 	}
@@ -93,6 +96,8 @@ func ReverseProxyErrorHandler(lb *LoadBalancer) func(http.ResponseWriter, *http.
 }
 
 func (lb *LoadBalancer) RemoveServer(addr string) {
+	lb.ServerPool.mux.Lock()
+	defer lb.ServerPool.mux.Unlock()
 	if lb.ServerPool.Servers == nil {
 		return
 	}
@@ -177,8 +182,8 @@ func (lb *LoadBalancer) GetServersHandler() http.HandlerFunc {
 
 func setAlive(s *Server, alive bool) {
 	s.mux.Lock()
+	defer s.mux.Unlock()
 	s.Healthy = alive
-	s.mux.Unlock()
 }
 
 func isAlive(s *Server) bool {
