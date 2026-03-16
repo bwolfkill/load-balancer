@@ -114,6 +114,8 @@ func (lb *LoadBalancer) RemoveServer(addr string) {
 }
 
 func (lb *LoadBalancer) GetServers() []*Server {
+	lb.ServerPool.mux.RLock()
+	defer lb.ServerPool.mux.RUnlock()
 	out := make([]*Server, len(lb.ServerPool.Order))
 	copy(out, lb.ServerPool.Order)
 	return out
