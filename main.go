@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -14,8 +14,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
-	"log/slog"
 	"time"
+	"math"
 )
 
 const (
@@ -89,7 +89,7 @@ func ReverseProxyErrorHandler(lb *LoadBalancer) func(http.ResponseWriter, *http.
 			return
 		}
 		if retries < 3 {
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(backoffDuration(retries))
 			ctx := context.WithValue(r.Context(), Retry, retries+1)
 			server.reverseProxy.ServeHTTP(w, r.WithContext(ctx))
 			return
@@ -102,6 +102,16 @@ func ReverseProxyErrorHandler(lb *LoadBalancer) func(http.ResponseWriter, *http.
 		ctx := context.WithValue(r.Context(), Attempt, attempts+1)
 		lb.LoadBalance(w, r.WithContext(ctx))
 	}
+}
+
+func backoffDuration(retries int) time.Duration {
+	if retries == 0 {
+		return 0
+	}
+	duration := 100.0
+	backoff := time.Duration(duration * math.Pow(2, float64(retries))) * time.Millisecond
+	backoff = time.Duration(math.Min(float64((duration * math.Pow(2, float64(retries)))), float64(5000))) * time.Millisecond
+	return backoff
 }
 
 func (lb *LoadBalancer) RemoveServer(addr string) {
@@ -350,7 +360,7 @@ func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
 }
 
 func Shutdown(server *http.Server, channel chan os.Signal) {
-	sig := <- channel
+	sig := <-channel
 	slog.Info("Shutdown signal received", "signal", sig)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -378,7 +388,7 @@ func main() {
 	http.HandleFunc("/health", lb.GetHealthCheckHandler)
 
 	server := &http.Server{
-		Addr: ":8080",
+		Addr:    ":8080",
 		Handler: http.HandlerFunc(lb.LoadBalance),
 	}
 
