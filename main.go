@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -15,7 +16,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-	"math"
 )
 
 const (
@@ -109,8 +109,8 @@ func backoffDuration(retries int) time.Duration {
 		return 0
 	}
 	duration := 100.0
-	backoff := time.Duration(duration * math.Pow(2, float64(retries))) * time.Millisecond
-	backoff = time.Duration(math.Min(float64((duration * math.Pow(2, float64(retries)))), float64(5000))) * time.Millisecond
+	backoff := time.Duration(duration*math.Pow(2, float64(retries))) * time.Millisecond
+	backoff = time.Duration(math.Min(float64((duration*math.Pow(2, float64(retries)))), float64(5000))) * time.Millisecond
 	return backoff
 }
 
@@ -329,12 +329,17 @@ func RemoveConnection(s *Server) {
 }
 
 type LoadBalancer struct {
-	ServerPool *ServerPool
-	Algorithm  Algorithm
-	Interval   time.Duration
+	ServerPool     *ServerPool
+	Algorithm      Algorithm
+	Interval       time.Duration
+	RequestTimeout time.Duration
 }
 
 func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), lb.RequestTimeout)
+	defer cancel()
+	
+	r = r.WithContext(ctx)
 	if len(lb.ServerPool.Order) == 0 {
 		slog.Error("No servers available", "remoteAddr", r.RemoteAddr, "path", r.URL.Path)
 		http.Error(w, "Service not available", http.StatusServiceUnavailable)
@@ -373,9 +378,10 @@ func Shutdown(server *http.Server, channel chan os.Signal) {
 
 func main() {
 	lb := &LoadBalancer{
-		ServerPool: newServerPool(),
-		Algorithm:  newRoundRobin(),
-		Interval:   5 * time.Second,
+		ServerPool:     newServerPool(),
+		Algorithm:      newRoundRobin(),
+		Interval:       5 * time.Second,
+		RequestTimeout: 30 * time.Second,
 	}
 	lb.AddServer("http://localhost:8081")
 	lb.AddServer("http://localhost:8082")
