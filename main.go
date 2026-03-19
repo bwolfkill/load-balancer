@@ -213,9 +213,16 @@ func isAlive(s *Server) bool {
 	}
 	resp, err := client.Get(s.Address + "/healthz")
 	if err != nil {
+		slog.Error("Health check failed", "error", err, "address", s.Address)
 		return false
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		slog.Error("Unhealthy status code", "statusCode", resp.StatusCode, "address", s.Address)
+		return false
+	}
+
 	return true
 }
 
@@ -338,7 +345,7 @@ type LoadBalancer struct {
 func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), lb.RequestTimeout)
 	defer cancel()
-	
+
 	r = r.WithContext(ctx)
 	if len(lb.ServerPool.Order) == 0 {
 		slog.Error("No servers available", "remoteAddr", r.RemoteAddr, "path", r.URL.Path)
