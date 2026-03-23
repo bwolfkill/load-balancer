@@ -1,0 +1,130 @@
+package main
+
+import (
+	"log/slog"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/joho/godotenv"
+)
+
+type Environment string
+type LoadBalancerAlgorithm string
+
+const (
+	EnvironmentLocal Environment = "local"
+	EnvironmentDev   Environment = "development"
+	EnvironmentProd  Environment = "production"
+)
+
+const (
+	AlgorithmRoundRobin       LoadBalancerAlgorithm = "round_robin"
+	AlgorithmLeastConnections LoadBalancerAlgorithm = "least_connections"
+)
+
+type Config struct {
+	Port                string
+	HealthCheckInterval time.Duration
+	RequestTimeout      time.Duration
+	MaxRetries          int
+	Algorithm           string
+	Servers             []string
+}
+
+const (
+	DefaultPort                = "8080"
+	DefaultHealthCheckInterval = 10000
+	DefaultRequestTimeout      = 30000
+	DefaultMaxRetries          = 3
+	DefaultAlgorithm           = string(AlgorithmRoundRobin)
+	DefaultEnvironment         = string(EnvironmentLocal)
+)
+
+func LoadConfig() *Config {
+	var servers []string
+	env, exists := os.LookupEnv("ENV")
+	if !exists || env == "" {
+		env = DefaultEnvironment
+	}
+	if env == string(EnvironmentLocal) {
+		err := godotenv.Load(".env")
+		if err != nil {
+			slog.Error("Error loading .env file", "error", err)
+			panic(err)
+		}
+	}
+
+	// Target Servers
+	servers = strings.Split(getEnv("TARGET_SERVERS", ""), ",")
+	if env == string(EnvironmentLocal) && len(servers) == 0 {
+		servers = []string{"http://localhost:8081", "http://localhost:8082", "http://localhost:8083"}
+	} else if env != string(EnvironmentLocal) && len(servers) == 0 {
+		slog.Warn("No target servers specified")
+	}
+
+	// Health Check Interval
+	var healthCheckInterval time.Duration
+	envHCInterval := getEnv("HEALTH_CHECK_INTERVAL", strconv.Itoa(DefaultHealthCheckInterval))
+	interval, err := strconv.Atoi(envHCInterval)
+	if err != nil {
+		slog.Info("HEALTH_CHECK_INTERVAL is not an integer, trying duration", "value", envHCInterval)
+		healthCheckInterval, err = time.ParseDuration(envHCInterval)
+		if err != nil {
+			slog.Warn("Invalid HEALTH_CHECK_INTERVAL set, defaulting", "provided", envHCInterval, "default", DefaultHealthCheckInterval)
+			healthCheckInterval = time.Duration(DefaultHealthCheckInterval) * time.Millisecond
+		}
+	} else {
+		healthCheckInterval = time.Duration(interval) * time.Millisecond
+	}
+
+	// Request Timeout
+	var requestTimeout time.Duration
+	envRequestTimeout := getEnv("REQUEST_TIMEOUT", strconv.Itoa(DefaultRequestTimeout))
+	timeout, err := strconv.Atoi(envRequestTimeout)
+	if err != nil {
+		slog.Info("REQUEST_TIMEOUT is not an integer, trying duration", "value", envRequestTimeout)
+		requestTimeout, err = time.ParseDuration(envRequestTimeout)
+		if err != nil {
+			slog.Warn("Invalid REQUEST_TIMEOUT set, defaulting", "provided", envRequestTimeout, "default", DefaultRequestTimeout)
+			requestTimeout = time.Duration(DefaultRequestTimeout) * time.Millisecond
+		}
+	} else {
+		requestTimeout = time.Duration(timeout) * time.Millisecond
+	}
+
+	// Max Retries
+	maxRetries := DefaultMaxRetries
+	if v := getEnv("MAX_RETRIES", strconv.Itoa(DefaultMaxRetries)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			maxRetries = n
+		}
+	}
+
+	// Load Balancer Algorithm
+	algorithm := getEnv("ALGORITHM", DefaultAlgorithm)
+	if algorithm != string(AlgorithmRoundRobin) && algorithm != string(AlgorithmLeastConnections) {
+		slog.Warn("Invalid algorithm specified, defaulting to round_robin", "provided", algorithm)
+		algorithm = DefaultAlgorithm
+	}
+
+	config := &Config{
+		Port:                getEnv("PORT", DefaultPort),
+		HealthCheckInterval: healthCheckInterval,
+		RequestTimeout:      requestTimeout,
+		MaxRetries:          maxRetries,
+		Algorithm:           algorithm,
+		Servers:             servers,
+	}
+
+	return config
+}
+
+func getEnv(key string, fallback string) string {
+	val := os.Getenv(key)
+	if val == "" {
+		return fallback
+	}
+	return val
+}

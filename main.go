@@ -88,7 +88,7 @@ func ReverseProxyErrorHandler(lb *LoadBalancer) func(http.ResponseWriter, *http.
 			http.Error(w, "Server not found", http.StatusBadGateway)
 			return
 		}
-		if retries < 3 {
+		if retries < lb.MaxRetries {
 			time.Sleep(backoffDuration(retries))
 			ctx := context.WithValue(r.Context(), Retry, retries+1)
 			server.reverseProxy.ServeHTTP(w, r.WithContext(ctx))
@@ -340,6 +340,21 @@ type LoadBalancer struct {
 	Algorithm      Algorithm
 	Interval       time.Duration
 	RequestTimeout time.Duration
+	MaxRetries     int
+}
+
+func newLoadBalancer(cfg *Config) *LoadBalancer {
+	lb := &LoadBalancer{
+		ServerPool:     newServerPool(),
+		Algorithm:      setAlgorithm(cfg.Algorithm),
+		Interval:       cfg.HealthCheckInterval,
+		RequestTimeout: cfg.RequestTimeout,
+		MaxRetries:     cfg.MaxRetries,
+	}
+	for _, s := range(cfg.Servers) {
+		lb.AddServer(s)
+	}
+	return lb
 }
 
 func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
@@ -354,7 +369,7 @@ func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	attempts := GetAttemptFromContext(r)
-	if attempts > 3 {
+	if attempts > lb.MaxRetries {
 		slog.Error("Too many attempts", "remoteAddr", r.RemoteAddr, "path", r.URL.Path)
 		http.Error(w, "Service not available", http.StatusServiceUnavailable)
 		return
@@ -371,6 +386,18 @@ func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
 	server.reverseProxy.ServeHTTP(w, r)
 }
 
+func setAlgorithm(algorithm string) Algorithm {
+	switch algorithm {
+	case string(AlgorithmRoundRobin):
+		return newRoundRobin()
+	case string(AlgorithmLeastConnections):
+		return newLeastConnections()
+	default:
+		slog.Warn("Invalid algorithm specified, defaulting to round_robin", "provided", algorithm)
+		return newRoundRobin()
+	}
+}
+
 func Shutdown(server *http.Server, channel chan os.Signal) {
 	sig := <-channel
 	slog.Info("Shutdown signal received", "signal", sig)
@@ -384,15 +411,9 @@ func Shutdown(server *http.Server, channel chan os.Signal) {
 }
 
 func main() {
-	lb := &LoadBalancer{
-		ServerPool:     newServerPool(),
-		Algorithm:      newRoundRobin(),
-		Interval:       5 * time.Second,
-		RequestTimeout: 30 * time.Second,
-	}
-	lb.AddServer("http://localhost:8081")
-	lb.AddServer("http://localhost:8082")
-	lb.AddServer("http://localhost:8083")
+	cfg := LoadConfig()
+
+	lb := newLoadBalancer(cfg)
 
 	http.HandleFunc("/", lb.LoadBalance)
 	http.HandleFunc("/add", lb.AddServerHandler())
@@ -401,8 +422,8 @@ func main() {
 	http.HandleFunc("/health", lb.GetHealthCheckHandler)
 
 	server := &http.Server{
-		Addr:    ":8080",
-		Handler: http.HandlerFunc(lb.LoadBalance),
+		Addr:    ":" + cfg.Port,
+		Handler: nil,
 	}
 
 	go lb.RunHealthCheck()
@@ -412,7 +433,7 @@ func main() {
 
 	go Shutdown(server, sigChan)
 
-	slog.Info("Starting load balancer", "port", "8080")
+	slog.Info("Starting load balancer", "port", cfg.Port)
 	if err := server.ListenAndServe(); err != nil {
 		slog.Error("Error starting load balancer server", "error", err)
 	}
