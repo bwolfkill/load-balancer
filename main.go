@@ -351,7 +351,7 @@ func newLoadBalancer(cfg *Config) *LoadBalancer {
 		RequestTimeout: cfg.RequestTimeout,
 		MaxRetries:     cfg.MaxRetries,
 	}
-	for _, s := range(cfg.Servers) {
+	for _, s := range cfg.Servers {
 		lb.AddServer(s)
 	}
 	return lb
@@ -412,6 +412,8 @@ func Shutdown(server *http.Server, channel chan os.Signal) {
 
 func main() {
 	cfg := LoadConfig()
+
+	InitializeLogger(cfg)
 
 	lb := newLoadBalancer(cfg)
 

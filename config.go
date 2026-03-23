@@ -12,14 +12,18 @@ import (
 
 type Environment string
 type LoadBalancerAlgorithm string
+type LogLevel string
 
 const (
 	EnvironmentLocal Environment = "local"
 	EnvironmentDev   Environment = "development"
 	EnvironmentProd  Environment = "production"
-)
 
-const (
+	LogLevelDebug LogLevel = "DEBUG"
+	LogLevelInfo  LogLevel = "INFO"
+	LogLevelWarn  LogLevel = "WARN"
+	LogLevelError LogLevel = "ERROR"
+
 	AlgorithmRoundRobin       LoadBalancerAlgorithm = "round_robin"
 	AlgorithmLeastConnections LoadBalancerAlgorithm = "least_connections"
 )
@@ -31,6 +35,7 @@ type Config struct {
 	MaxRetries          int
 	Algorithm           string
 	Servers             []string
+	LogLevel            string
 }
 
 const (
@@ -40,6 +45,7 @@ const (
 	DefaultMaxRetries          = 3
 	DefaultAlgorithm           = string(AlgorithmRoundRobin)
 	DefaultEnvironment         = string(EnvironmentLocal)
+	DefaultLogLevel            = string(LogLevelWarn)
 )
 
 func LoadConfig() *Config {
@@ -109,6 +115,17 @@ func LoadConfig() *Config {
 		algorithm = DefaultAlgorithm
 	}
 
+	// Logging Level
+	logLevel := getEnv("LOG_LEVEL", DefaultLogLevel)
+	if env == string(EnvironmentLocal) {
+		logLevel = string(LogLevelInfo)
+	} else if logLevel != string(LogLevelInfo) && logLevel != string(LogLevelWarn) {
+		slog.Warn("Invalid log level specified, defaulting to WARN", "provided", logLevel)
+		logLevel = DefaultLogLevel
+	} else {
+		logLevel = DefaultLogLevel
+	}
+
 	config := &Config{
 		Port:                getEnv("PORT", DefaultPort),
 		HealthCheckInterval: healthCheckInterval,
@@ -116,6 +133,7 @@ func LoadConfig() *Config {
 		MaxRetries:          maxRetries,
 		Algorithm:           algorithm,
 		Servers:             servers,
+		LogLevel:            logLevel,
 	}
 
 	return config
