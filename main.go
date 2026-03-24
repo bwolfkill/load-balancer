@@ -411,7 +411,11 @@ func Shutdown(server *http.Server, channel chan os.Signal) {
 }
 
 func main() {
-	cfg := LoadConfig()
+	cfg, err := LoadConfig()
+	if err != nil {
+		slog.Error("Failed to load config", "error", err)
+		os.Exit(1)
+	}
 
 	InitializeLogger(cfg)
 

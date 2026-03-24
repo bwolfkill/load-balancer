@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"fmt"
 
 	"github.com/joho/godotenv"
 )
@@ -48,7 +49,7 @@ const (
 	DefaultLogLevel            = string(LogLevelWarn)
 )
 
-func LoadConfig() *Config {
+func LoadConfig() (*Config, error) {
 	var servers []string
 	env, exists := os.LookupEnv("ENV")
 	if !exists || env == "" {
@@ -57,8 +58,7 @@ func LoadConfig() *Config {
 	if env == string(EnvironmentLocal) {
 		err := godotenv.Load(".env")
 		if err != nil {
-			slog.Error("Error loading .env file", "error", err)
-			panic(err)
+			slog.Error("Error loading .env file, defaulting", "error", err)
 		}
 	}
 
@@ -67,7 +67,8 @@ func LoadConfig() *Config {
 	if env == string(EnvironmentLocal) && len(servers) == 0 {
 		servers = []string{"http://localhost:8081", "http://localhost:8082", "http://localhost:8083"}
 	} else if env != string(EnvironmentLocal) && len(servers) == 0 {
-		slog.Warn("No target servers specified")
+		slog.Error("No target servers specified")
+		return nil, fmt.Errorf("TARGET_SERVERS must be set in non-local environments")
 	}
 
 	// Health Check Interval
@@ -136,7 +137,7 @@ func LoadConfig() *Config {
 		LogLevel:            logLevel,
 	}
 
-	return config
+	return config, nil
 }
 
 func getEnv(key string, fallback string) string {
