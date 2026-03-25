@@ -64,6 +64,9 @@ func LoadConfig() (*Config, error) {
 
 	// Target Servers
 	servers = strings.Split(getEnv("TARGET_SERVERS", ""), ",")
+	if servers[0] == "" {
+		servers = servers[:0]
+	}
 	if env == string(EnvironmentLocal) && len(servers) == 0 {
 		servers = []string{"http://localhost:8081", "http://localhost:8082", "http://localhost:8083"}
 	} else if env != string(EnvironmentLocal) && len(servers) == 0 {
