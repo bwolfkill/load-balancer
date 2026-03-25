@@ -1,0 +1,78 @@
+package balancer
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
+
+func jsonHandler(w http.ResponseWriter, response interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (lb *LoadBalancer) GetServersHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	servers := lb.GetServers()
+	response := make([]ServerResponse, 0)
+	for _, server := range servers {
+		response = append(response, ServerResponse{Address: server.Address, Healthy: server.Healthy})
+	}
+	jsonHandler(w, response)
+}
+
+func (lb *LoadBalancer) AddServerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req RegisterServerRequest
+	if r.Header.Get("Content-Type") == "application/json" {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+	} else {
+		req.Addr = r.FormValue("addr")
+	}
+	if req.Addr == "" {
+		http.Error(w, "Address is required", http.StatusBadRequest)
+		return
+	}
+	lb.AddServer(req.Addr)
+	fmt.Fprintf(w, "Server added: %s", req.Addr)
+}
+
+func (lb *LoadBalancer) RemoveServerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req RegisterServerRequest
+	if r.Header.Get("Content-Type") == "application/json" {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+	} else {
+		req.Addr = r.FormValue("addr")
+	}
+	if req.Addr == "" {
+		http.Error(w, "Address is required", http.StatusBadRequest)
+		return
+	}
+	lb.RemoveServer(req.Addr)
+	fmt.Fprintf(w, "Server removed: %s", req.Addr)
+}
+
+func (m *Metrics) GetMetricsHandler(w http.ResponseWriter, r *http.Request) {
+	requests, successes, failures := m.GetMetrics()                                                                                                                                                                                                                                            
+	jsonHandler(w, MetricsResponse{
+		Requests:  requests,
+		Successes: successes,                                                                                                                                                                                                                                                                  
+		Failures:  failures,
+	})
+}

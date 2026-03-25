@@ -1,8 +1,10 @@
-package main
+package logger
 
 import (
 	"log/slog"
 	"os"
+
+	"github.com/bwolfkill/load-balancer/internal/config"
 )
 
 const (
@@ -12,7 +14,7 @@ const (
 	LevelError = slog.LevelError
 )
 
-func InitializeLogger(cfg *Config) {
+func InitializeLogger(cfg *config.Config) {
 	opts := &slog.HandlerOptions{
 		Level: parseLogLevel(cfg.LogLevel),
 	}
@@ -23,13 +25,13 @@ func InitializeLogger(cfg *Config) {
 
 func parseLogLevel(level string) slog.Level {
 	switch level {
-	case string(LogLevelDebug):
+	case string(config.LogLevelDebug):
 		return slog.LevelDebug
-	case string(LogLevelInfo):
+	case string(config.LogLevelInfo):
 		return slog.LevelInfo
-	case string(LogLevelWarn):
+	case string(config.LogLevelWarn):
 		return slog.LevelWarn
-	case string(LogLevelError):
+	case string(config.LogLevelError):
 		return slog.LevelError
 	default:
 		return slog.LevelWarn
