@@ -27,8 +27,8 @@ type Server struct {
 	Address      string
 	Connections  int64
 	Healthy      bool
-	mux          sync.RWMutex
 	reverseProxy *httputil.ReverseProxy
+	mux          sync.RWMutex
 }
 
 type ServerPool struct {
@@ -42,10 +42,7 @@ type registerServerRequest struct {
 }
 
 func newServerPool() *ServerPool {
-	return &ServerPool{
-		Servers: make(map[string]*Server),
-		Order:   []*Server{},
-	}
+	return &ServerPool{Servers: make(map[string]*Server)}
 }
 
 func (lb *LoadBalancer) AddServer(addr string) {
@@ -54,7 +51,7 @@ func (lb *LoadBalancer) AddServer(addr string) {
 	if lb.ServerPool.Servers[addr] != nil {
 		return
 	}
-	s := &Server{Address: addr, Connections: 0}
+	s := &Server{Address: addr}
 	lb.ServerPool.Servers[addr] = s
 	lb.ServerPool.Order = append(lb.ServerPool.Order, s)
 
@@ -77,6 +74,10 @@ func addReverseProxy(s *Server, targetUrl string, lb *LoadBalancer) {
 	}
 	s.reverseProxy = httputil.NewSingleHostReverseProxy(url)
 	s.reverseProxy.ErrorHandler = ReverseProxyErrorHandler(lb)
+	s.reverseProxy.ModifyResponse = func(resp *http.Response) error {
+		lb.Metrics.RecordRequest(true)
+		return nil
+	}
 }
 
 func ReverseProxyErrorHandler(lb *LoadBalancer) func(http.ResponseWriter, *http.Request, error) {
@@ -96,6 +97,7 @@ func ReverseProxyErrorHandler(lb *LoadBalancer) func(http.ResponseWriter, *http.
 		}
 
 		setAlive(server, false)
+		lb.Metrics.RecordRequest(false)
 
 		attempts := GetAttemptFromContext(r)
 		slog.Info("Attempting retry", "remoteAddr", r.RemoteAddr, "path", r.URL.Path, "attempts", attempts)
@@ -188,6 +190,11 @@ func (lb *LoadBalancer) RemoveServerHandler() http.HandlerFunc {
 	}
 }
 
+type ServerResponse struct {
+	Address string `json:"address"`
+	Healthy bool   `json:"healthy"`
+}
+
 func (lb *LoadBalancer) GetServersHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -195,10 +202,17 @@ func (lb *LoadBalancer) GetServersHandler() http.HandlerFunc {
 			return
 		}
 		servers := lb.GetServers()
+		response := make([]ServerResponse, 0)
 		for _, server := range servers {
-			fmt.Fprintf(w, "Server: %s\n", server.Address)
+			response = append(response, ServerResponse{Address: server.Address, Healthy: server.Healthy})
 		}
+		jsonHandler(w, response)
 	}
+}
+
+func jsonHandler(w http.ResponseWriter, response interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func setAlive(s *Server, alive bool) {
@@ -341,6 +355,7 @@ type LoadBalancer struct {
 	Interval       time.Duration
 	RequestTimeout time.Duration
 	MaxRetries     int
+	Metrics        *Metrics
 }
 
 func newLoadBalancer(cfg *Config) *LoadBalancer {
@@ -350,6 +365,7 @@ func newLoadBalancer(cfg *Config) *LoadBalancer {
 		Interval:       cfg.HealthCheckInterval,
 		RequestTimeout: cfg.RequestTimeout,
 		MaxRetries:     cfg.MaxRetries,
+		Metrics:        newMetrics(),
 	}
 	for _, s := range cfg.Servers {
 		lb.AddServer(s)
@@ -410,6 +426,47 @@ func Shutdown(server *http.Server, channel chan os.Signal) {
 	}
 }
 
+// Metrics
+type Metrics struct {
+	TotalRequests  int64
+	TotalSuccesses int64
+	TotalFailures  int64
+}
+
+func newMetrics() *Metrics {
+	return &Metrics{}
+}
+
+func (m *Metrics) RecordRequest(success bool) {
+	atomic.AddInt64(&m.TotalRequests, 1)
+	if success {
+		atomic.AddInt64(&m.TotalSuccesses, 1)
+	} else {
+		atomic.AddInt64(&m.TotalFailures, 1)
+	}
+}
+
+func (m *Metrics) GetMetrics() map[string]int64 {
+	return map[string]int64{
+		"requests":  atomic.LoadInt64(&m.TotalRequests),
+		"successes": atomic.LoadInt64(&m.TotalSuccesses),
+		"failures":  atomic.LoadInt64(&m.TotalFailures),
+	}
+}
+
+type MetricsResponse struct {
+	Requests  int64 `json:"requests"`
+	Successes int64 `json:"successes"`
+	Failures  int64 `json:"failures"`
+}
+
+func (m *Metrics) GetMetricsHandler(w http.ResponseWriter, r *http.Request) {
+	var response MetricsResponse
+	metrics, _ := json.Marshal(m.GetMetrics())
+	json.Unmarshal(metrics, &response)
+	jsonHandler(w, response)
+}
+
 func main() {
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -419,6 +476,7 @@ func main() {
 
 	InitializeLogger(cfg)
 
+	slog.Info("Starting load balancer", "port", cfg.Port)
 	lb := newLoadBalancer(cfg)
 
 	http.HandleFunc("/", lb.LoadBalance)
@@ -426,6 +484,7 @@ func main() {
 	http.HandleFunc("/remove", lb.RemoveServerHandler())
 	http.HandleFunc("/servers", lb.GetServersHandler())
 	http.HandleFunc("/health", lb.GetHealthCheckHandler)
+	http.HandleFunc("/metrics", lb.Metrics.GetMetricsHandler)
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
@@ -439,7 +498,6 @@ func main() {
 
 	go Shutdown(server, sigChan)
 
-	slog.Info("Starting load balancer", "port", cfg.Port)
 	if err := server.ListenAndServe(); err != nil {
 		slog.Error("Error starting load balancer server", "error", err)
 	}
