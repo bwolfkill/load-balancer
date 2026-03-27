@@ -1,7 +1,6 @@
 package balancer
 
 import (
-	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -44,18 +43,4 @@ func (lb *LoadBalancer) RunHealthCheck() {
 			slog.Info("Health check", "server", server.Address, "status", status)
 		}
 	}
-}
-
-func (lb *LoadBalancer) GetHealthCheckHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	server := lb.ServerPool.Servers[r.URL.Query().Get("addr")]
-	if server == nil {
-		http.Error(w, "Server not found", http.StatusBadRequest)
-		return
-	}
-	healthy := HealthCheck(server)
-	fmt.Fprintf(w, "Server %s is: %t", server.Address, healthy)
 }

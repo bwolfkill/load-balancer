@@ -1,12 +1,12 @@
 package config
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-	"fmt"
 
 	"github.com/joho/godotenv"
 )
@@ -55,6 +55,7 @@ func LoadConfig() (*Config, error) {
 	if !exists || env == "" {
 		env = DefaultEnvironment
 	}
+	env = strings.ToLower(env)
 	if env == string(EnvironmentLocal) {
 		err := godotenv.Load(".env")
 		if err != nil {
@@ -123,11 +124,14 @@ func LoadConfig() (*Config, error) {
 	logLevel := getEnv("LOG_LEVEL", DefaultLogLevel)
 	if env == string(EnvironmentLocal) {
 		logLevel = string(LogLevelInfo)
-	} else if logLevel != string(LogLevelInfo) && logLevel != string(LogLevelWarn) {
-		slog.Warn("Invalid log level specified, defaulting to WARN", "provided", logLevel)
-		logLevel = DefaultLogLevel
 	} else {
-		logLevel = DefaultLogLevel
+		switch logLevel {
+		case string(LogLevelDebug), string(LogLevelInfo), string(LogLevelWarn), string(LogLevelError):
+			// valid, keep as-is
+		default:
+			slog.Warn("Invalid log level specified, defaulting to WARN", "provided", logLevel)
+			logLevel = DefaultLogLevel
+		}
 	}
 
 	config := &Config{

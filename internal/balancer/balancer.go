@@ -55,7 +55,7 @@ func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Service not available", http.StatusServiceUnavailable)
 		return
 	}
-	server := lb.Algorithm.Select(lb.ServerPool.Order)
+	server := lb.Algorithm.Select(lb.ServerPool)
 	if server == nil {
 		slog.Error("No healthy servers available", "remoteAddr", r.RemoteAddr, "path", r.URL.Path)
 		http.Error(w, "Service not available", http.StatusServiceUnavailable)

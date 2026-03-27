@@ -69,10 +69,24 @@ func (lb *LoadBalancer) RemoveServerHandler(w http.ResponseWriter, r *http.Reque
 }
 
 func (m *Metrics) GetMetricsHandler(w http.ResponseWriter, r *http.Request) {
-	requests, successes, failures := m.GetMetrics()                                                                                                                                                                                                                                            
+	requests, successes, failures := m.GetMetrics()
 	jsonHandler(w, MetricsResponse{
 		Requests:  requests,
-		Successes: successes,                                                                                                                                                                                                                                                                  
+		Successes: successes,
 		Failures:  failures,
 	})
+}
+
+func (lb *LoadBalancer) GetHealthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	server := lb.ServerPool.Servers[r.URL.Query().Get("addr")]
+	if server == nil {
+		http.Error(w, "Server not found", http.StatusBadRequest)
+		return
+	}
+	healthy := HealthCheck(server)
+	fmt.Fprintf(w, "Server %s is: %t", server.Address, healthy)
 }
