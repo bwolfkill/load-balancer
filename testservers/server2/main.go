@@ -1,3 +1,6 @@
+// Package main is a minimal HTTP backend used for local development.
+// It is not part of the load balancer itself — run all three testservers
+// alongside the load balancer to simulate a real backend pool locally.
 package main
 
 import (
