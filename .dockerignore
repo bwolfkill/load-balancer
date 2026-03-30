@@ -32,6 +32,11 @@ profile.cov
 Dockerfile*
 .dockerignore
 docker-compose*.yml
+compose.yaml
+
+# Local development tooling
+Makefile
+.air.toml
 
 # README and docs — not needed at runtime
 *.md
