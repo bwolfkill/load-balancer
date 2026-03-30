@@ -13,27 +13,52 @@ A reverse proxy load balancer written in Go. Distributes incoming HTTP traffic a
 
 ## Requirements
 
-- Go 1.22+
+- Go 1.25+
+- Docker + Docker Compose
+- [air](https://github.com/air-verse/air) (live reload)
 
 ## Getting Started
 
 ```bash
-# Clone and build
 git clone https://github.com/bwolfkill/load-balancer.git
 cd load-balancer
-go build ./cmd/loadbalancer
 
-# Run locally (uses .env if present, falls back to defaults)
-./loadbalancer
+# Install air for live reload
+make setup
+
+# Start test backends in Docker + load balancer with live reload
+make dev
 ```
 
-For local development the load balancer defaults to port `8080` and three test backends at `localhost:8081–8083`. Start them with:
+`make dev` starts the three test backends in Docker and runs the load balancer locally with `air`. Any changes to `cmd/` or `internal/` will automatically recompile and restart the load balancer.
+
+When finished:
 
 ```bash
-go run ./testservers/server1 &
-go run ./testservers/server2 &
-go run ./testservers/server3 &
+ctrl+c     # stop air
+make down  # stop Docker containers
 ```
+
+## Available Make Targets
+
+| Target       | Description                                          |
+|--------------|------------------------------------------------------|
+| `make setup` | Install development dependencies (air)               |
+| `make dev`   | Start test backends in Docker + load balancer w/ air |
+| `make down`  | Stop and remove all Docker containers                |
+| `make build` | Build the load balancer binary                       |
+| `make test`  | Run all tests with the race detector                 |
+| `make coverage` | Run tests and open a coverage report in the browser |
+
+## Running with Docker Compose
+
+To run the full stack in Docker without `air`:
+
+```bash
+docker compose up --build
+```
+
+This builds and starts all four services. The load balancer is available at `http://localhost:8080`.
 
 ## Configuration
 
@@ -113,15 +138,11 @@ testservers/            # lightweight HTTP servers for local development
 ## Running Tests
 
 ```bash
-# Run all tests with the race detector
-go test -race ./...
-
-# With coverage report
-go test -race -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
+make test      # run all tests with the race detector
+make coverage  # run tests and open a coverage report in the browser
 ```
 
-The race detector (`-race`) is recommended because the balancer manages concurrent access to the server pool and connection counters.
+The race detector is always enabled because the balancer manages concurrent access to the server pool and connection counters.
 
 ## License
 
