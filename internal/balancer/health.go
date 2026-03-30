@@ -12,17 +12,11 @@ func isAlive(s *Server) bool {
 	}
 	resp, err := client.Get(s.Address + "/healthz")
 	if err != nil {
-		slog.Error("Health check failed", "error", err, "address", s.Address)
 		return false
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		slog.Error("Unhealthy status code", "statusCode", resp.StatusCode, "address", s.Address)
-		return false
-	}
-
-	return true
+	return resp.StatusCode == http.StatusOK
 }
 
 func HealthCheck(s *Server) bool {
@@ -39,8 +33,10 @@ func (lb *LoadBalancer) RunHealthCheck() {
 			status := "up"
 			if !healthy {
 				status = "down"
+				slog.Warn("Health check failed", "server", server.Address)
+			} else {
+				slog.Info("Health check", "server", server.Address, "status", status)
 			}
-			slog.Info("Health check", "server", server.Address, "status", status)
 		}
 	}
 }
