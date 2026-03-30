@@ -1,0 +1,61 @@
+# Load Balancer Docker Compose Configuration
+
+services:
+  loadbalancer:
+    build:
+      context: .
+      args:
+        CMD_PATH: cmd/loadbalancer
+    ports:
+      - "8080:8080"
+    environment:
+      TARGET_SERVERS: http://server1:8081,http://server2:8082,http://server3:8083
+    depends_on:
+      server1:
+        condition: service_healthy
+      server2:
+        condition: service_healthy
+      server3:
+        condition: service_healthy
+
+  server1:
+    build:
+      context: .
+      args:
+        CMD_PATH: testservers/server1
+    expose:
+      - "8081"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  server2:
+    build:
+      context: .
+      args:
+        CMD_PATH: testservers/server2
+    expose:
+      - "8082"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  server3:
+    build:
+      context: .
+      args:
+        CMD_PATH: testservers/server3
+    expose:
+      - "8083"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
