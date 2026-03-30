@@ -1,4 +1,6 @@
-# Load Balancer Docker Compose Configuration
+# Development-only configuration. Runs the load balancer alongside three                                                                                                                                                                                                                          
+# minimal test backends to demonstrate local operation. For real deployments,                                                                                                                                                                                                                     
+# set TARGET_SERVERS to point at your own backends and omit the testservers. 
 
 services:
   loadbalancer:
@@ -23,8 +25,8 @@ services:
       context: .
       args:
         CMD_PATH: testservers/server1
-    expose:
-      - "8081"
+    ports:
+      - "8081:8081"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8081/healthz"]
       interval: 10s
@@ -37,8 +39,8 @@ services:
       context: .
       args:
         CMD_PATH: testservers/server2
-    expose:
-      - "8082"
+    ports:
+      - "8082:8082"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8082/healthz"]
       interval: 10s
@@ -51,8 +53,8 @@ services:
       context: .
       args:
         CMD_PATH: testservers/server3
-    expose:
-      - "8083"
+    ports:
+      - "8083:8083"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8083/healthz"]
       interval: 10s

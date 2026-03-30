@@ -29,8 +29,8 @@ func (lb *LoadBalancer) RunHealthCheck() {
 	for {
 		time.Sleep(lb.Interval)
 		for _, server := range lb.GetServers() {
-			healthy := HealthCheck(server)
 			status := "up"
+			healthy := HealthCheck(server)
 			if !healthy {
 				status = "down"
 				slog.Warn("Health check failed", "server", server.Address)

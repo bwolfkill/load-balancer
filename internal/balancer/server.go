@@ -39,7 +39,7 @@ func (lb *LoadBalancer) AddServer(addr string) {
 	health := HealthCheck(s)
 	s.Healthy = health
 	if !health {
-		slog.Info("Server is unhealthy", "address", s.Address)
+		slog.Warn("Server is unhealthy", "address", s.Address)
 	} else {
 		slog.Info("Server is healthy", "address", s.Address)
 	}
