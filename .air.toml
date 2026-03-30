@@ -1,5 +1,5 @@
 [build]
     cmd = "go build -o ./tmp/loadbalancer ./cmd/loadbalancer"
-    bin = "./tmp/loadbalancer"
+    entrypoint = "./tmp/loadbalancer"
     include_ext = ["go"]
     exclude_dir = ["tmp", "testservers"]
