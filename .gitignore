@@ -33,3 +33,6 @@ loadbalancer
 
 # Air
 tmp/
+
+# Minikube
+minikube*

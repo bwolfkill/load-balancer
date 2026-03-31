@@ -1,4 +1,4 @@
-.PHONY: dev down build test coverage setup
+.PHONY: dev down build test coverage setup k8s-up k8s-down k8s-status
 
 # Install development dependencies
 setup:
@@ -26,3 +26,15 @@ test:
 coverage:
 	go test -race -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out
+
+# Apply all Kubernetes manifests
+k8s-up:
+	kubectl apply -f k8s/
+
+# Delete all Kubernetes resources
+k8s-down:
+	kubectl delete -f k8s/
+
+# Show status of all pods and services
+k8s-status:
+	kubectl get pods,services

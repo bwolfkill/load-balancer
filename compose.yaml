@@ -4,6 +4,7 @@
 
 services:
   loadbalancer:
+    image: loadbalancer
     build:
       context: .
       args:
@@ -21,6 +22,7 @@ services:
         condition: service_healthy
 
   server1:
+    image: server1
     build:
       context: .
       args:
@@ -35,6 +37,7 @@ services:
       start_period: 5s
 
   server2:
+    image: server2
     build:
       context: .
       args:
@@ -49,6 +52,7 @@ services:
       start_period: 5s
 
   server3:
+    image: server3
     build:
       context: .
       args:

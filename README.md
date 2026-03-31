@@ -16,6 +16,7 @@ A reverse proxy load balancer written in Go. Distributes incoming HTTP traffic a
 - Go 1.25+
 - Docker + Docker Compose
 - [air](https://github.com/air-verse/air) (live reload)
+- [minikube](https://minikube.sigs.k8s.io/) + [kubectl](https://kubernetes.io/docs/tasks/tools/) (optional, for Kubernetes)
 
 ## Getting Started
 
@@ -41,14 +42,17 @@ make down  # stop Docker containers
 
 ## Available Make Targets
 
-| Target       | Description                                          |
-|--------------|------------------------------------------------------|
-| `make setup` | Install development dependencies (air)               |
-| `make dev`   | Start test backends in Docker + load balancer w/ air |
-| `make down`  | Stop and remove all Docker containers                |
-| `make build` | Build the load balancer binary                       |
-| `make test`  | Run all tests with the race detector                 |
-| `make coverage` | Run tests and open a coverage report in the browser |
+| Target            | Description                                          |
+|-------------------|------------------------------------------------------|
+| `make setup`      | Install development dependencies (air)               |
+| `make dev`        | Start test backends in Docker + load balancer w/ air |
+| `make down`       | Stop and remove all Docker containers                |
+| `make build`      | Build the load balancer binary                       |
+| `make test`       | Run all tests with the race detector                 |
+| `make coverage`   | Run tests and open a coverage report in the browser  |
+| `make k8s-up`     | Apply all Kubernetes manifests                       |
+| `make k8s-down`   | Delete all Kubernetes resources                      |
+| `make k8s-status` | Show status of all pods and services                 |
 
 ## Running with Docker Compose
 
@@ -59,6 +63,55 @@ docker compose up --build
 ```
 
 This builds and starts all four services. The load balancer is available at `http://localhost:8080`.
+
+## Running with Kubernetes (minikube)
+
+Requires minikube and kubectl installed.
+
+```bash
+# Start minikube
+minikube start
+
+# Point your Docker CLI at minikube's internal daemon
+eval $(minikube docker-env)
+
+# Build images into minikube's daemon
+docker build --build-arg CMD_PATH=cmd/loadbalancer -t loadbalancer:latest .
+docker build --build-arg CMD_PATH=testservers/server1 -t server1:latest .
+docker build --build-arg CMD_PATH=testservers/server2 -t server2:latest .
+docker build --build-arg CMD_PATH=testservers/server3 -t server3:latest .
+
+# Apply all manifests
+kubectl apply -f k8s/
+
+# Expose the load balancer and get the URL
+minikube service loadbalancer --url
+```
+
+To update configuration (e.g. change the algorithm):
+
+```bash
+# Edit k8s/configmap.yaml, then apply and restart
+kubectl apply -f k8s/configmap.yaml
+kubectl rollout restart deployment/loadbalancer
+```
+
+To pause minikube:
+
+```bash
+# Suspend the cluster without losing state
+  minikube pause
+
+# Resume
+minikube unpause
+```
+
+To tear down:
+
+```bash
+kubectl delete -f k8s/
+minikube stop
+```
 
 ## Configuration
 

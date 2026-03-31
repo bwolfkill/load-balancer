@@ -38,5 +38,8 @@ compose.yaml
 Makefile
 .air.toml
 
+# Kubernetes manifests — not needed at runtime
+k8s/
+
 # README and docs — not needed at runtime
 *.md

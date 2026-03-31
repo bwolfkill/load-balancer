@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: server1
+  template:
+    metadata:
+      labels:
+        app: server1
+    spec:
+      containers:
+        - name: server1
+          image: server1:latest
+          imagePullPolicy: Never
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: server2
+  template:
+    metadata:
+      labels:
+        app: server2
+    spec:
+      containers:
+        - name: server2
+          image: server2:latest
+          imagePullPolicy: Never
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: server3
+  template:
+    metadata:
+      labels:
+        app: server3
+    spec:
+      containers:
+        - name: server3
+          image: server3:latest
+          imagePullPolicy: Never
