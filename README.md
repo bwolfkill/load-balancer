@@ -1,5 +1,8 @@
 # load-balancer
 
+[![CI](https://github.com/bwolfkill/load-balancer/actions/workflows/ci.yaml/badge.svg)](https://github.com/bwolfkill/load-balancer/actions/workflows/ci.yaml)
+[![Lint](https://github.com/bwolfkill/load-balancer/actions/workflows/golangci-lint.yaml/badge.svg)](https://github.com/bwolfkill/load-balancer/actions/workflows/golangci-lint.yaml)
+
 A reverse proxy load balancer written in Go. Distributes incoming HTTP traffic across a pool of backend servers using configurable algorithms, with active health checking, graceful shutdown, and a management API.
 
 ## Features
@@ -16,6 +19,7 @@ A reverse proxy load balancer written in Go. Distributes incoming HTTP traffic a
 - Go 1.25+
 - Docker + Docker Compose
 - [air](https://github.com/air-verse/air) (live reload)
+- [golangci-lint](https://golangci-lint.run/) (linting)
 - [minikube](https://minikube.sigs.k8s.io/) + [kubectl](https://kubernetes.io/docs/tasks/tools/) (optional, for Kubernetes)
 
 ## Getting Started
@@ -50,6 +54,7 @@ make down  # stop Docker containers
 | `make build`      | Build the load balancer binary                       |
 | `make test`       | Run all tests with the race detector                 |
 | `make coverage`   | Run tests and open a coverage report in the browser  |
+| `make lint`       | Run linter locally                                   |
 | `make k8s-up`     | Apply all Kubernetes manifests                       |
 | `make k8s-down`   | Delete all Kubernetes resources                      |
 | `make k8s-status` | Show status of all pods and services                 |
@@ -193,9 +198,10 @@ testservers/            # lightweight HTTP servers for local development
 ```bash
 make test      # run all tests with the race detector
 make coverage  # run tests and open a coverage report in the browser
+make lint      # run linter locally
 ```
 
-The race detector is always enabled because the balancer manages concurrent access to the server pool and connection counters.
+The race detector is always enabled because the balancer manages concurrent access to the server pool and connection counters. Both `test` and `lint` run automatically on every push to main via GitHub Actions.
 
 ## License
 

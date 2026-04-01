@@ -1,8 +1,9 @@
-.PHONY: dev down build test coverage setup k8s-up k8s-down k8s-status
+.PHONY: dev down build test coverage setup lint k8s-up k8s-down k8s-status
 
 # Install development dependencies
 setup:
 	go install github.com/air-verse/air@latest
+	brew install golangci-lint
 
 # Start test backends in Docker and run the load balancer with live reload
 dev:
@@ -26,6 +27,10 @@ test:
 coverage:
 	go test -race -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out
+
+# Run linter locally
+lint:
+	golangci-lint run ./...
 
 # Apply all Kubernetes manifests
 k8s-up:
