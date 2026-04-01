@@ -16,13 +16,13 @@ func getHealthCheckHandler() http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "OK")
+		_, _ = fmt.Fprintf(w, "OK")
 	}
 }
 
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "You are now connected to Server 2.")
+		_, _ = fmt.Fprintf(w, "You are now connected to Server 2.")
 	})
 	http.HandleFunc("/healthz", getHealthCheckHandler())
 

@@ -84,7 +84,7 @@ func TestAddReverseProxy(t *testing.T) {
 	_, s := newTestBackend(t, func(w http.ResponseWriter, r *http.Request) {
 		received <- struct{}{}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok from backend"))
+		_, _ = w.Write([]byte("ok from backend"))
 	})
 
 	lb := newTestLoadBalancer(s)

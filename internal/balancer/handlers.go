@@ -8,7 +8,9 @@ import (
 
 func jsonHandler(w http.ResponseWriter, response interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
 }
 
 func (lb *LoadBalancer) GetServersHandler(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +45,9 @@ func (lb *LoadBalancer) AddServerHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	lb.AddServer(req.Addr)
-	fmt.Fprintf(w, "Server added: %s", req.Addr)
+	if _, err := fmt.Fprintf(w, "Server added: %s", req.Addr); err != nil {
+		http.Error(w, "Failed to write response", http.StatusInternalServerError)
+	}
 }
 
 func (lb *LoadBalancer) RemoveServerHandler(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +69,9 @@ func (lb *LoadBalancer) RemoveServerHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	lb.RemoveServer(req.Addr)
-	fmt.Fprintf(w, "Server removed: %s", req.Addr)
+	if _, err := fmt.Fprintf(w, "Server removed: %s", req.Addr); err != nil {
+		http.Error(w, "Failed to write response", http.StatusInternalServerError)
+	}
 }
 
 func (m *Metrics) GetMetricsHandler(w http.ResponseWriter, r *http.Request) {
@@ -88,5 +94,7 @@ func (lb *LoadBalancer) GetHealthCheckHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 	healthy := HealthCheck(server)
-	fmt.Fprintf(w, "Server %s is: %t", server.Address, healthy)
+	if _, err := fmt.Fprintf(w, "Server %s is: %t", server.Address, healthy); err != nil {
+		http.Error(w, "Failed to write response", http.StatusInternalServerError)
+	}
 }

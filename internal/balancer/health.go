@@ -14,7 +14,7 @@ func isAlive(s *Server) bool {
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return resp.StatusCode == http.StatusOK
 }
@@ -29,13 +29,11 @@ func (lb *LoadBalancer) RunHealthCheck() {
 	for {
 		time.Sleep(lb.Interval)
 		for _, server := range lb.GetServers() {
-			status := "up"
 			healthy := HealthCheck(server)
 			if !healthy {
-				status = "down"
 				slog.Warn("Health check failed", "server", server.Address)
 			} else {
-				slog.Info("Health check", "server", server.Address, "status", status)
+				slog.Info("Health check", "server", server.Address, "status", "up")
 			}
 		}
 	}

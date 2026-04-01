@@ -69,7 +69,7 @@ func TestLoadBalanceTooManyAttempts(t *testing.T) {
 func TestLoadBalanceForwards(t *testing.T) {
 	_, s := newTestBackend(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("hello from backend"))
+		_, _ = w.Write([]byte("hello from backend"))
 	})
 
 	lb := newTestLoadBalancer(s)

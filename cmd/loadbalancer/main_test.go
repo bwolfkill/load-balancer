@@ -50,7 +50,7 @@ func waitForServer(t *testing.T, baseURL string) {
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(baseURL + "/servers")
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -81,7 +81,7 @@ func TestRunServesRoutes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("request failed: %v", err)
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusNotFound {
 				t.Errorf("route %s %s returned 404 — handler may be nil", r.method, r.path)
 			}

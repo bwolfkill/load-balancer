@@ -55,8 +55,7 @@ func backoffDuration(retries int) time.Duration {
 		return 0
 	}
 	duration := 100.0
-	backoff := time.Duration(duration*math.Pow(2, float64(retries))) * time.Millisecond
-	backoff = time.Duration(math.Min(float64((duration*math.Pow(2, float64(retries)))), float64(5000))) * time.Millisecond
+	backoff := time.Duration(math.Min(duration*math.Pow(2, float64(retries)), 5000)) * time.Millisecond
 	return backoff
 }
 

@@ -9,8 +9,10 @@ import (
 	"github.com/bwolfkill/load-balancer/internal/config"
 )
 
+type contextKey int
+
 const (
-	Attempt int = iota
+	Attempt contextKey = iota
 	Retry
 )
 
