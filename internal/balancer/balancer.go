@@ -47,6 +47,7 @@ func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(ctx)
 	if len(lb.ServerPool.Order) == 0 {
 		slog.Error("No servers available", "remoteAddr", r.RemoteAddr, "path", r.URL.Path)
+		lb.Metrics.RecordRequest(false)
 		http.Error(w, "Service not available", http.StatusServiceUnavailable)
 		return
 	}
@@ -54,12 +55,14 @@ func (lb *LoadBalancer) LoadBalance(w http.ResponseWriter, r *http.Request) {
 	attempts := GetAttemptFromContext(r)
 	if attempts > lb.MaxRetries {
 		slog.Error("Too many attempts", "remoteAddr", r.RemoteAddr, "path", r.URL.Path)
+		lb.Metrics.RecordRequest(false)
 		http.Error(w, "Service not available", http.StatusServiceUnavailable)
 		return
 	}
 	server := lb.Algorithm.Select(lb.ServerPool)
 	if server == nil {
 		slog.Error("No healthy servers available", "remoteAddr", r.RemoteAddr, "path", r.URL.Path)
+		lb.Metrics.RecordRequest(false)
 		http.Error(w, "Service not available", http.StatusServiceUnavailable)
 		return
 	}

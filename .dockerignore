@@ -41,5 +41,8 @@ Makefile
 # Kubernetes manifests — not needed at runtime
 k8s/
 
+# Observability config — not needed at runtime
+observability/
+
 # README and docs — not needed at runtime
 *.md

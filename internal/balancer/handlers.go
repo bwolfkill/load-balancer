@@ -45,9 +45,7 @@ func (lb *LoadBalancer) AddServerHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	lb.AddServer(req.Addr)
-	if _, err := fmt.Fprintf(w, "Server added: %s", req.Addr); err != nil {
-		http.Error(w, "Failed to write response", http.StatusInternalServerError)
-	}
+	fmt.Fprintf(w, "Server added: %s", req.Addr)
 }
 
 func (lb *LoadBalancer) RemoveServerHandler(w http.ResponseWriter, r *http.Request) {
@@ -69,9 +67,7 @@ func (lb *LoadBalancer) RemoveServerHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	lb.RemoveServer(req.Addr)
-	if _, err := fmt.Fprintf(w, "Server removed: %s", req.Addr); err != nil {
-		http.Error(w, "Failed to write response", http.StatusInternalServerError)
-	}
+	fmt.Fprintf(w, "Server removed: %s", req.Addr)
 }
 
 func (m *Metrics) GetMetricsHandler(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +90,5 @@ func (lb *LoadBalancer) GetHealthCheckHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 	healthy := HealthCheck(server)
-	if _, err := fmt.Fprintf(w, "Server %s is: %t", server.Address, healthy); err != nil {
-		http.Error(w, "Failed to write response", http.StatusInternalServerError)
-	}
+	fmt.Fprintf(w, "Server %s is: %t", server.Address, healthy)
 }

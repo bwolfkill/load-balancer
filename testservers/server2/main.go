@@ -7,12 +7,20 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync/atomic"
+	"time"
 )
+
+var healthy atomic.Bool
 
 func getHealthCheckHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !healthy.Load() {
+			http.Error(w, "Unhealthy", http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -21,8 +29,23 @@ func getHealthCheckHandler() http.HandlerFunc {
 }
 
 func main() {
+	healthy.Store(true)
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprintf(w, "You are now connected to Server 2.")
+	})
+	http.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(25 * time.Second)
+		_, _ = fmt.Fprintf(w, "Slow response from Server 2.")
+	})
+	http.HandleFunc("/sethealthy", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("healthy") == "false" {
+			healthy.Store(false)
+			_, _ = fmt.Fprintf(w, "Server 2 set to unhealthy")
+		} else {
+			healthy.Store(true)
+			_, _ = fmt.Fprintf(w, "Server 2 set to healthy")
+		}
 	})
 	http.HandleFunc("/healthz", getHealthCheckHandler())
 

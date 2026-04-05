@@ -10,6 +10,18 @@ import (
 	"time"
 )
 
+type timedTransport struct {
+	server  string
+	wrapped http.RoundTripper
+}
+
+func (t *timedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	start := time.Now()
+	resp, err := t.wrapped.RoundTrip(req)
+	requestDuration.WithLabelValues(t.server).Observe(time.Since(start).Seconds())
+	return resp, err
+}
+
 func addReverseProxy(s *Server, targetUrl string, lb *LoadBalancer) {
 	url, err := url.Parse(targetUrl)
 	if err != nil {
@@ -17,6 +29,7 @@ func addReverseProxy(s *Server, targetUrl string, lb *LoadBalancer) {
 		return
 	}
 	s.reverseProxy = httputil.NewSingleHostReverseProxy(url)
+	s.reverseProxy.Transport = &timedTransport{server: s.Address, wrapped: http.DefaultTransport}
 	s.reverseProxy.ErrorHandler = ReverseProxyErrorHandler(lb)
 	s.reverseProxy.ModifyResponse = func(resp *http.Response) error {
 		lb.Metrics.RecordRequest(true)
@@ -30,6 +43,7 @@ func ReverseProxyErrorHandler(lb *LoadBalancer) func(http.ResponseWriter, *http.
 		retries := GetRetryFromContext(r)
 		server := lb.ServerPool.Servers[r.URL.Host]
 		if server == nil {
+			lb.Metrics.RecordRequest(false)
 			http.Error(w, "Server not found", http.StatusBadGateway)
 			return
 		}

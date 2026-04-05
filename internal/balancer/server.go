@@ -35,6 +35,7 @@ func (lb *LoadBalancer) AddServer(addr string) {
 	s := &Server{Address: addr}
 	lb.ServerPool.Servers[addr] = s
 	lb.ServerPool.Order = append(lb.ServerPool.Order, s)
+	activeConnections.WithLabelValues(addr).Add(0)
 
 	health := HealthCheck(s)
 	s.Healthy = health
@@ -71,18 +72,27 @@ func (lb *LoadBalancer) RemoveServer(addr string) {
 			break
 		}
 	}
+	serverHealth.DeleteLabelValues(addr)
+	activeConnections.DeleteLabelValues(addr)
 }
 
 func AddConnection(s *Server) {
 	atomic.AddInt64(&s.Connections, 1)
+	activeConnections.WithLabelValues(s.Address).Add(1)
 }
 
 func RemoveConnection(s *Server) {
 	atomic.AddInt64(&s.Connections, -1)
+	activeConnections.WithLabelValues(s.Address).Sub(1)
 }
 
 func setAlive(s *Server, alive bool) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	s.Healthy = alive
+	if s.Healthy {
+		serverHealth.WithLabelValues(s.Address).Set(1)
+	} else {
+		serverHealth.WithLabelValues(s.Address).Set(0)
+	}
 }

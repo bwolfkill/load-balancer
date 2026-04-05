@@ -2,6 +2,8 @@ package balancer
 
 import (
 	"net/http"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func RegisterRoutes(mux *http.ServeMux, lb *LoadBalancer) {
@@ -11,4 +13,5 @@ func RegisterRoutes(mux *http.ServeMux, lb *LoadBalancer) {
 	mux.HandleFunc("/servers", lb.GetServersHandler)
 	mux.HandleFunc("/health", lb.GetHealthCheckHandler)
 	mux.HandleFunc("/metrics", lb.Metrics.GetMetricsHandler)
+	mux.Handle("/metrics/prometheus", promhttp.Handler())
 }

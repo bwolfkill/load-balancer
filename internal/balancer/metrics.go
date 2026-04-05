@@ -16,10 +16,13 @@ func newMetrics() *Metrics {
 
 func (m *Metrics) RecordRequest(success bool) {
 	atomic.AddInt64(&m.TotalRequests, 1)
+	totalRequests.Inc()
 	if success {
 		atomic.AddInt64(&m.TotalSuccesses, 1)
+		successfulRequests.Inc()
 	} else {
 		atomic.AddInt64(&m.TotalFailures, 1)
+		failedRequests.Inc()
 	}
 }
 

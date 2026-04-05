@@ -13,109 +13,171 @@ A reverse proxy load balancer written in Go. Distributes incoming HTTP traffic a
 - **Management API**: add/remove servers and inspect pool state at runtime without restarting
 - **Graceful shutdown**: drains in-flight requests before exiting on `SIGINT`/`SIGTERM`
 - **Structured logging**: JSON-friendly output via `log/slog` with configurable level
+- **Prometheus metrics**: request counts, success/failure rates, active connections, and per-server health exported at `/metrics/prometheus`
 
 ## Requirements
 
 - Go 1.25+
 - Docker + Docker Compose
-- [air](https://github.com/air-verse/air) (live reload)
+- [air](https://github.com/air-verse/air) (live reload, for `make dev`)
 - [golangci-lint](https://golangci-lint.run/) (linting)
 - [minikube](https://minikube.sigs.k8s.io/) + [kubectl](https://kubernetes.io/docs/tasks/tools/) (optional, for Kubernetes)
 
-## Getting Started
+## Local Development
+
+There are three ways to run the stack locally. **`make dev` is recommended** for active development.
+
+### `make dev` — recommended
+
+Runs the load balancer locally with live reload (`air`) while the three test backends run in Docker. Any change to `cmd/` or `internal/` recompiles and restarts the load balancer instantly — no Docker rebuild needed.
 
 ```bash
-git clone https://github.com/bwolfkill/load-balancer.git
-cd load-balancer
-
-# Install air for live reload
-make setup
-
-# Start test backends in Docker + load balancer with live reload
-make dev
+make setup   # install air and golangci-lint (one-time)
+make dev     # start test backends in Docker + load balancer with live reload
 ```
 
-`make dev` starts the three test backends in Docker and runs the load balancer locally with `air`. Any changes to `cmd/` or `internal/` will automatically recompile and restart the load balancer.
-
-When finished:
+Load balancer: `http://localhost:8080`
 
 ```bash
 ctrl+c     # stop air
 make down  # stop Docker containers
 ```
 
-## Available Make Targets
+### Docker Compose
 
-| Target            | Description                                          |
-|-------------------|------------------------------------------------------|
-| `make setup`      | Install development dependencies (air)               |
-| `make dev`        | Start test backends in Docker + load balancer w/ air |
-| `make down`       | Stop and remove all Docker containers                |
-| `make build`      | Build the load balancer binary                       |
-| `make test`       | Run all tests with the race detector                 |
-| `make coverage`   | Run tests and open a coverage report in the browser  |
-| `make lint`       | Run linter locally                                   |
-| `make k8s-up`     | Apply all Kubernetes manifests                       |
-| `make k8s-down`   | Delete all Kubernetes resources                      |
-| `make k8s-status` | Show status of all pods and services                 |
-
-## Running with Docker Compose
-
-To run the full stack in Docker without `air`:
+Runs the entire stack in containers. Useful for verifying the containerized build, but requires a Docker rebuild on every code change.
 
 ```bash
 docker compose up --build
 ```
 
-This builds and starts all four services. The load balancer is available at `http://localhost:8080`.
+Load balancer: `http://localhost:8080`
+
+### Kubernetes (minikube)
+
+Runs the full stack in a local Kubernetes cluster. Best for testing k8s-specific behavior — not recommended for day-to-day development due to the slower rebuild loop. See [Running with Kubernetes](#running-with-kubernetes-minikube) below.
+
+## Available Make Targets
+
+| Target                    | Description                                                           |
+|---------------------------|-----------------------------------------------------------------------|
+| `make setup`              | Install development dependencies (air, golangci-lint)                |
+| `make dev`                | Start test backends in Docker + load balancer w/ live reload          |
+| `make down`               | Stop and remove all Docker containers                                 |
+| `make build`              | Build the load balancer binary                                        |
+| `make test`               | Run all tests with the race detector                                  |
+| `make coverage`           | Run tests and open a coverage report in the browser                   |
+| `make lint`               | Run linter locally                                                    |
+| `make load-test`          | Run a multi-phase load test against `http://localhost:8080`           |
+| `make observability-up`   | Start Prometheus + Grafana alongside the running stack                |
+| `make observability-down` | Stop Prometheus and Grafana containers                                |
+| `make k8s-setup`          | Start minikube, enable ingress, build all images, apply all manifests |
+| `make k8s-rebuild`        | Rebuild load balancer image and roll out update                       |
+| `make k8s-up`             | Apply all Kubernetes manifests                                        |
+| `make k8s-down`           | Delete all Kubernetes resources                                       |
+| `make k8s-tunnel`         | Run minikube tunnel — required for load balancer + ingress access     |
+| `make k8s-status`         | Show status of all pods and services                                  |
+| `make k8s-observability`  | Print Prometheus and Grafana URLs                                     |
+| `make k8s-load-test`      | Run the multi-phase load test against the minikube cluster            |
+
+## Observability
+
+The load balancer exposes Prometheus metrics at `/metrics/prometheus`. Prometheus and Grafana can be started alongside either dev mode or Docker Compose:
+
+```bash
+make dev                  # or: docker compose up --build
+make observability-up     # start Prometheus and Grafana
+make load-test            # run a multi-phase load test
+```
+
+The Grafana datasource and dashboard are provisioned automatically — no manual setup required. Open `http://localhost:3000` and the **Load Balancer** dashboard will already be there.
+
+The load test runs in four phases:
+1. **Baseline** — 100 sequential requests to populate request rate and cumulative totals
+2. **Concurrent slow requests** — 14 parallel requests to a `/slow` endpoint that holds each connection open for 25 seconds, giving Prometheus time to observe active connections
+3. **Failure injection** — removes all servers from the pool, sends 10 requests (expect 503s), then restores them
+4. **Unhealthy server simulation** — sets server1's `/healthz` to return 503, waits for the health check to detect it, then restores it — visible as a red tile in the Server Health panel
+
+| Service    | URL                   |
+|------------|-----------------------|
+| Prometheus | http://localhost:9090 |
+| Grafana    | http://localhost:3000 |
+
+Grafana default credentials: `admin` / `admin`.
+
+Prometheus is pre-configured to scrape the load balancer every 5 seconds. Available metrics:
+
+| Metric                           | Type         | Description                               |
+|----------------------------------|--------------|-------------------------------------------|
+| `lb_requests_total`              | Counter      | Total requests proxied                    |
+| `lb_requests_success_total`      | Counter      | Requests that returned a success          |
+| `lb_requests_failed_total`       | Counter      | Requests that failed or were retried      |
+| `lb_active_connections`          | GaugeVec     | Active connections per backend            |
+| `lb_server_health`               | GaugeVec     | Health status per backend (1=up)          |
+| `lb_request_duration_seconds`    | HistogramVec | Request duration per backend (p50/p95/p99)|
+
+To stop:
+
+```bash
+make observability-down
+```
 
 ## Running with Kubernetes (minikube)
 
-Requires minikube and kubectl installed.
+### First-time setup
 
 ```bash
-# Start minikube
-minikube start
+# Add stable hostnames for Prometheus and Grafana (one-time)
+echo "127.0.0.1 prometheus.local grafana.local" | sudo tee -a /etc/hosts
 
-# Point your Docker CLI at minikube's internal daemon
-eval $(minikube docker-env)
-
-# Build images into minikube's daemon
-docker build --build-arg CMD_PATH=cmd/loadbalancer -t loadbalancer:latest .
-docker build --build-arg CMD_PATH=testservers/server1 -t server1:latest .
-docker build --build-arg CMD_PATH=testservers/server2 -t server2:latest .
-docker build --build-arg CMD_PATH=testservers/server3 -t server3:latest .
-
-# Apply all manifests
-kubectl apply -f k8s/
-
-# Expose the load balancer and get the URL
-minikube service loadbalancer --url
+# Start minikube, enable ingress, build all images, and apply all manifests
+make k8s-setup
 ```
 
-To update configuration (e.g. change the algorithm):
+### Starting the tunnel
+
+`minikube tunnel` is required to expose both the load balancer and the ingress controller to the host. Keep it running in a separate terminal:
 
 ```bash
-# Edit k8s/configmap.yaml, then apply and restart
-kubectl apply -f k8s/configmap.yaml
+make k8s-tunnel
+```
+
+Once the tunnel is running:
+- Load balancer: `http://127.0.0.1:8080`
+- Prometheus: `http://prometheus.local`
+- Grafana: `http://grafana.local`
+
+```bash
+make k8s-observability   # print the observability URLs
+make k8s-load-test       # run the multi-phase load test
+```
+
+### After code changes
+
+```bash
+make k8s-rebuild   # rebuilds the load balancer image and rolls out the update
+```
+
+### Updating configuration
+
+```bash
+# Edit k8s/loadbalancer/configmap.yaml, then:
+kubectl apply -f k8s/loadbalancer/configmap.yaml
 kubectl rollout restart deployment/loadbalancer
 ```
 
-To pause minikube:
+### Teardown
 
 ```bash
-# Suspend the cluster without losing state
-  minikube pause
-
-# Resume
-minikube unpause
+make k8s-down    # delete all Kubernetes resources
+minikube stop    # stop the cluster
 ```
 
-To tear down:
+To suspend without losing state:
 
 ```bash
-kubectl delete -f k8s/
-minikube stop
+minikube pause
+minikube unpause
 ```
 
 ## Configuration
@@ -149,13 +211,14 @@ LOG_LEVEL=INFO
 
 All endpoints are served on the same port as the load balancer.
 
-| Method | Path       | Description                                      |
-|--------|------------|--------------------------------------------------|
-| `GET`  | `/servers` | List all backend servers and their health status.|
-| `GET`  | `/metrics` | Request counts: total, successes, failures.      |
-| `GET`  | `/health`  | Check a specific server. `?addr=<url>`           |
-| `POST` | `/add`     | Add a backend server to the pool.                |
-| `POST` | `/remove`  | Remove a backend server from the pool.           |
+| Method | Path                   | Description                                       |
+|--------|------------------------|---------------------------------------------------|
+| `GET`  | `/servers`             | List all backend servers and their health status. |
+| `GET`  | `/metrics`             | Request counts: total, successes, failures.       |
+| `GET`  | `/metrics/prometheus`  | Prometheus metrics endpoint.                      |
+| `GET`  | `/health`              | Check a specific server. `?addr=<url>`            |
+| `POST` | `/add`                 | Add a backend server to the pool.                 |
+| `POST` | `/remove`              | Remove a backend server from the pool.            |
 
 **Add a server:**
 
@@ -189,6 +252,9 @@ internal/
   config/               # environment-based configuration loading
   logger/               # slog initialization
 testservers/            # lightweight HTTP servers for local development
+observability/          # Prometheus scrape config and Grafana provisioning
+k8s/                    # Kubernetes manifests for minikube
+scripts/                # load test script
 ```
 
 `internal/` is enforced by the Go compiler — nothing outside this module can import it. All business logic lives there to keep the `main` package thin.
@@ -196,9 +262,10 @@ testservers/            # lightweight HTTP servers for local development
 ## Running Tests
 
 ```bash
-make test      # run all tests with the race detector
-make coverage  # run tests and open a coverage report in the browser
-make lint      # run linter locally
+make test                                          # run all tests with the race detector
+make coverage                                      # run tests and open a coverage report
+go test -race ./internal/balancer/ -run TestName  # run a single test
+make lint                                          # run linter
 ```
 
 The race detector is always enabled because the balancer manages concurrent access to the server pool and connection counters. Both `test` and `lint` run automatically on every push to main via GitHub Actions.
