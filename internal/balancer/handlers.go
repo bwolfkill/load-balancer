@@ -45,7 +45,7 @@ func (lb *LoadBalancer) AddServerHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	lb.AddServer(req.Addr)
-	fmt.Fprintf(w, "Server added: %s", req.Addr)
+	_, _ = fmt.Fprintf(w, "address: %s", req.Addr)
 }
 
 func (lb *LoadBalancer) RemoveServerHandler(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +67,7 @@ func (lb *LoadBalancer) RemoveServerHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	lb.RemoveServer(req.Addr)
-	fmt.Fprintf(w, "Server removed: %s", req.Addr)
+	_, _ = fmt.Fprintf(w, "address: %s", req.Addr)
 }
 
 func (m *Metrics) GetMetricsHandler(w http.ResponseWriter, r *http.Request) {
@@ -90,5 +90,5 @@ func (lb *LoadBalancer) GetHealthCheckHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 	healthy := HealthCheck(server)
-	fmt.Fprintf(w, "Server %s is: %t", server.Address, healthy)
+	jsonHandler(w, ServerResponse{Address: server.Address, Healthy: healthy})
 }

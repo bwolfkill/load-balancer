@@ -180,22 +180,25 @@
         }
       },
       "fieldConfig": {
-        "defaults": { "unit": "s" }
+        "defaults": {
+          "unit": "s",
+          "custom": { "spanNulls": true }
+        }
       },
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.99, sum(rate(lb_request_duration_seconds_bucket[1m])) by (le, server))",
+          "expr": "histogram_quantile(0.99, sum(rate(lb_request_duration_seconds_bucket[30s])) by (le, server))",
           "legendFormat": "p99 {{server}}"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.95, sum(rate(lb_request_duration_seconds_bucket[1m])) by (le, server))",
+          "expr": "histogram_quantile(0.95, sum(rate(lb_request_duration_seconds_bucket[30s])) by (le, server))",
           "legendFormat": "p95 {{server}}"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.50, sum(rate(lb_request_duration_seconds_bucket[1m])) by (le, server))",
+          "expr": "histogram_quantile(0.50, sum(rate(lb_request_duration_seconds_bucket[30s])) by (le, server))",
           "legendFormat": "p50 {{server}}"
         }
       ]

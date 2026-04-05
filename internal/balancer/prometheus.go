@@ -26,7 +26,7 @@ var (
 	requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "lb_request_duration_seconds",
 		Help:    "HTTP request duration to backend servers in seconds",
-		Buckets: prometheus.DefBuckets,
+		Buckets: append(prometheus.DefBuckets, 15, 20, 25, 30),
 	}, []string{"server"})
 )
 
